@@ -5,6 +5,7 @@
 - Update IDEAS.md with any new ideas discussed
 - Append conversation summary to CHAT-HISTORY.md (strip sensitive info: passwords, API keys, tokens, personal addresses)
 - Always push after committing
+- After every UI change, send a screenshot of just the app window (not full screen) to Ethan via Telegram
 
 ## Project Info
 - Repo: https://github.com/EthanSK/agentlication
