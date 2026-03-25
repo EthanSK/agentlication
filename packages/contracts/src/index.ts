@@ -6,15 +6,45 @@ export interface ProviderModel {
   id: string;
   label: string;
   provider: ProviderKind;
+  cliName: string; // the CLI binary name (e.g. "claude", "codex")
 }
 
 export const MODELS: ProviderModel[] = [
-  { id: "sonnet", label: "Claude Sonnet", provider: "claude" },
-  { id: "opus", label: "Claude Opus", provider: "claude" },
-  { id: "gpt-5.4", label: "Codex GPT-5.4", provider: "codex" },
+  { id: "sonnet-4.5", label: "Claude Sonnet 4.5", provider: "claude", cliName: "claude" },
+  { id: "opus-4.6", label: "Claude Opus 4.6", provider: "claude", cliName: "claude" },
+  { id: "gpt-5.4", label: "Codex GPT-5.4", provider: "codex", cliName: "codex" },
+  { id: "gpt-5.3", label: "Codex GPT-5.3", provider: "codex", cliName: "codex" },
 ];
 
-// ── Agent events (main ↔ renderer IPC) ─────────────────────────
+// Group models by provider for UI display
+export const MODEL_GROUPS: { provider: ProviderKind; label: string; models: ProviderModel[] }[] = [
+  {
+    provider: "claude",
+    label: "Claude",
+    models: MODELS.filter((m) => m.provider === "claude"),
+  },
+  {
+    provider: "codex",
+    label: "Codex",
+    models: MODELS.filter((m) => m.provider === "codex"),
+  },
+];
+
+// ── Provider status ─────────────────────────────────────────────
+
+export interface ProviderStatus {
+  installed: boolean;
+  installCommand: string;
+}
+
+export type ProviderStatusMap = Record<ProviderKind, ProviderStatus>;
+
+export const PROVIDER_INSTALL_COMMANDS: Record<ProviderKind, string> = {
+  claude: "npm i -g @anthropic-ai/claude-code",
+  codex: "npm i -g @openai/codex",
+};
+
+// ── Agent events (main <-> renderer IPC) ─────────────────────────
 
 export type AgentEventKind =
   | "agent:chunk"      // streaming text chunk

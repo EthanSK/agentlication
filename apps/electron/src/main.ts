@@ -72,11 +72,10 @@ function registerIpcHandlers() {
     return cdpService.listTargets();
   });
 
-  // Agent operations
+  // Agent operations — Companion chat (with CDP context)
   ipcMain.handle(
     IPC.AGENT_SEND,
     async (_event, message: string, modelId: string) => {
-      // Stream events back to renderer via the event channel
       const onEvent = (event: unknown) => {
         mainWindow?.webContents.send(IPC.AGENT_EVENT, event);
       };
@@ -88,7 +87,7 @@ function registerIpcHandlers() {
     return agentService.cancel();
   });
 
-  // Provider check
+  // Provider check — returns full status with install commands
   ipcMain.handle(IPC.PROVIDER_CHECK, async () => {
     return agentService.checkProviders();
   });

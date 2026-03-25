@@ -1,13 +1,25 @@
 import React, { useState, useEffect, useRef } from "react";
-import type { TargetApp, ChatMessage, AgentEvent, AgentChunk } from "@agentlication/contracts";
+import type {
+  TargetApp,
+  ChatMessage,
+  AgentEvent,
+  AgentChunk,
+  ProviderStatusMap,
+} from "@agentlication/contracts";
 import ChatComposer from "./ChatComposer";
 import ModelPicker from "./ModelPicker";
 
 interface Props {
-  targetApp: TargetApp;
+  /** If provided, this is a Companion chat (per-app). Otherwise it's the Hub chat. */
+  targetApp?: TargetApp;
   selectedModel: string;
   onModelChange: (model: string) => void;
-  onBack: () => void;
+  onBack?: () => void;
+  providerStatus: ProviderStatusMap | null;
+  /** Title override for Hub mode */
+  title?: string;
+  /** Placeholder text for the composer */
+  placeholder?: string;
 }
 
 let messageIdCounter = 0;
@@ -20,6 +32,9 @@ export default function ChatPanel({
   selectedModel,
   onModelChange,
   onBack,
+  providerStatus,
+  title,
+  placeholder,
 }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [streaming, setStreaming] = useState(false);
@@ -99,13 +114,16 @@ export default function ChatPanel({
       await window.agentlication.agentSend(text, selectedModel);
     } else {
       // Dev mode mock
+      const context = targetApp
+        ? `I would interact with **${targetApp.name}** via CDP here.`
+        : "I'm the Setup Agent. I can help you configure your Electron apps.";
       setTimeout(() => {
         setMessages((prev) => [
           ...prev,
           {
             id: nextId(),
             role: "assistant",
-            content: `[Dev mode] I would interact with **${targetApp.name}** via CDP here. Model: ${selectedModel}`,
+            content: `[Dev mode] ${context} Model: ${selectedModel}`,
             timestamp: Date.now(),
           },
         ]);
@@ -119,30 +137,50 @@ export default function ChatPanel({
     setStreaming(false);
   };
 
+  const displayTitle = title || (targetApp ? targetApp.name : "Setup Agent");
+  const emptyHint = targetApp
+    ? "Ask the agent to interact with the app, read its state, or inject custom UI."
+    : "Ask me to help configure your Electron apps, set up providers, or get started.";
+
   return (
     <div className="chat-panel">
       {/* Header */}
       <div className="chat-header">
-        <button className="back-btn" onClick={onBack}>
-          &larr;
-        </button>
-        <span className="chat-target-name">{targetApp.name}</span>
-        <ModelPicker selected={selectedModel} onChange={onModelChange} />
+        {onBack && (
+          <button className="back-btn" onClick={onBack}>
+            &larr;
+          </button>
+        )}
+        <span className="chat-target-name">{displayTitle}</span>
+        <ModelPicker
+          selected={selectedModel}
+          onChange={onModelChange}
+          providerStatus={providerStatus}
+        />
       </div>
 
       {/* Messages */}
       <div className="chat-messages">
         {messages.length === 0 && !streaming && (
           <div className="chat-empty">
-            <p>Connected to <strong>{targetApp.name}</strong></p>
-            <p className="chat-empty-hint">
-              Ask the agent to interact with the app, read its state, or inject custom UI.
+            <p>
+              {targetApp ? (
+                <>
+                  Connected to <strong>{targetApp.name}</strong>
+                </>
+              ) : (
+                <>Agentlication Setup Agent</>
+              )}
             </p>
+            <p className="chat-empty-hint">{emptyHint}</p>
           </div>
         )}
 
         {messages.map((msg) => (
-          <div key={msg.id} className={`chat-message chat-message-${msg.role}`}>
+          <div
+            key={msg.id}
+            className={`chat-message chat-message-${msg.role}`}
+          >
             <div className="message-bubble">
               <div className="message-content">{msg.content}</div>
             </div>
@@ -163,7 +201,9 @@ export default function ChatPanel({
           <div className="chat-message chat-message-assistant">
             <div className="message-bubble">
               <div className="typing-indicator">
-                <span /><span /><span />
+                <span />
+                <span />
+                <span />
               </div>
             </div>
           </div>
@@ -173,7 +213,12 @@ export default function ChatPanel({
       </div>
 
       {/* Composer */}
-      <ChatComposer onSend={handleSend} onCancel={handleCancel} streaming={streaming} />
+      <ChatComposer
+        onSend={handleSend}
+        onCancel={handleCancel}
+        streaming={streaming}
+        placeholder={placeholder}
+      />
     </div>
   );
 }

@@ -4,9 +4,15 @@ interface Props {
   onSend: (message: string) => void;
   onCancel: () => void;
   streaming: boolean;
+  placeholder?: string;
 }
 
-export default function ChatComposer({ onSend, onCancel, streaming }: Props) {
+export default function ChatComposer({
+  onSend,
+  onCancel,
+  streaming,
+  placeholder,
+}: Props) {
   const [text, setText] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -40,7 +46,7 @@ export default function ChatComposer({ onSend, onCancel, streaming }: Props) {
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder="Ask the agent..."
+        placeholder={placeholder || "Ask the agent..."}
         rows={1}
         disabled={streaming}
       />

@@ -1,11 +1,18 @@
 import React, { useEffect, useState } from "react";
-import type { TargetApp } from "@agentlication/contracts";
+import type { TargetApp, ProviderStatusMap, ProviderKind } from "@agentlication/contracts";
+import { PROVIDER_INSTALL_COMMANDS } from "@agentlication/contracts";
 
 interface Props {
   onAppSelected: (app: TargetApp) => void;
+  onAppsLoaded?: (apps: TargetApp[]) => void;
+  providerStatus?: ProviderStatusMap | null;
 }
 
-export default function AppPicker({ onAppSelected }: Props) {
+export default function AppPicker({
+  onAppSelected,
+  onAppsLoaded,
+  providerStatus,
+}: Props) {
   const [apps, setApps] = useState<TargetApp[]>([]);
   const [loading, setLoading] = useState(true);
   const [customPath, setCustomPath] = useState("");
@@ -19,17 +26,19 @@ export default function AppPicker({ onAppSelected }: Props) {
   const loadApps = async () => {
     setLoading(true);
     try {
+      let scanned: TargetApp[];
       if (window.agentlication) {
-        const scanned = await window.agentlication.scanApps();
-        setApps(scanned);
+        scanned = await window.agentlication.scanApps();
       } else {
         // Dev mode without Electron — show mock data
-        setApps([
+        scanned = [
           { name: "VS Code", path: "/Applications/Visual Studio Code.app", isElectron: true },
           { name: "Slack", path: "/Applications/Slack.app", isElectron: true },
           { name: "Notion", path: "/Applications/Notion.app", isElectron: true },
-        ]);
+        ];
       }
+      setApps(scanned);
+      onAppsLoaded?.(scanned);
     } catch (err) {
       setError(String(err));
     } finally {
@@ -79,6 +88,35 @@ export default function AppPicker({ onAppSelected }: Props) {
         <h1>Agentlication</h1>
         <p className="subtitle">Select an Electron app to agentify</p>
       </div>
+
+      {/* Provider status banner */}
+      {providerStatus && (
+        <div className="provider-banner">
+          {(["claude", "codex"] as ProviderKind[]).map((provider) => {
+            const status = providerStatus[provider];
+            const name = provider === "claude" ? "Claude Code CLI" : "Codex CLI";
+            return (
+              <div key={provider} className="provider-banner-item">
+                <span
+                  className={
+                    status?.installed
+                      ? "status-dot status-dot-ready"
+                      : "status-dot status-dot-missing"
+                  }
+                />
+                <span className="provider-banner-name">{name}</span>
+                {status?.installed ? (
+                  <span className="provider-banner-ok">ready</span>
+                ) : (
+                  <span className="provider-banner-install">
+                    <code>{PROVIDER_INSTALL_COMMANDS[provider]}</code>
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Custom path input */}
       <div className="custom-path">

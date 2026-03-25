@@ -1,14 +1,46 @@
-import React, { useState } from "react";
-import type { TargetApp } from "@agentlication/contracts";
+import React, { useState, useEffect } from "react";
+import type { TargetApp, ProviderStatusMap } from "@agentlication/contracts";
 import AppPicker from "./AppPicker";
 import ChatPanel from "./ChatPanel";
 
-type Screen = "picker" | "chat";
+type Screen = "hub" | "chat";
 
 export default function App() {
-  const [screen, setScreen] = useState<Screen>("picker");
+  const [screen, setScreen] = useState<Screen>("hub");
   const [targetApp, setTargetApp] = useState<TargetApp | null>(null);
-  const [selectedModel, setSelectedModel] = useState("sonnet");
+  const [selectedModel, setSelectedModel] = useState("sonnet-4.5");
+  const [providerStatus, setProviderStatus] = useState<ProviderStatusMap | null>(null);
+  const [detectedApps, setDetectedApps] = useState<TargetApp[]>([]);
+  const [hubChatOpen, setHubChatOpen] = useState(false);
+
+  // Check provider status on startup
+  useEffect(() => {
+    checkProviders();
+  }, []);
+
+  const checkProviders = async () => {
+    if (window.agentlication) {
+      try {
+        const status = await window.agentlication.checkProviders();
+        setProviderStatus(status as ProviderStatusMap);
+
+        // Auto-select first available provider's model
+        if (status.claude?.installed) {
+          setSelectedModel("sonnet-4.5");
+        } else if (status.codex?.installed) {
+          setSelectedModel("gpt-5.4");
+        }
+      } catch {
+        // Ignore — status will remain null
+      }
+    } else {
+      // Dev mode — mock both as available
+      setProviderStatus({
+        claude: { installed: true, installCommand: "npm i -g @anthropic-ai/claude-code" },
+        codex: { installed: false, installCommand: "npm i -g @openai/codex" },
+      });
+    }
+  };
 
   const handleAppSelected = (app: TargetApp) => {
     setTargetApp(app);
@@ -16,8 +48,12 @@ export default function App() {
   };
 
   const handleBack = () => {
-    setScreen("picker");
+    setScreen("hub");
     setTargetApp(null);
+  };
+
+  const handleAppsLoaded = (apps: TargetApp[]) => {
+    setDetectedApps(apps);
   };
 
   return (
@@ -26,21 +62,66 @@ export default function App() {
         <div className="titlebar-drag" />
         <span className="titlebar-title">
           {screen === "chat" && targetApp
-            ? `Agentlication — ${targetApp.name}`
+            ? `Agentlication \u2014 ${targetApp.name}`
             : "Agentlication"}
         </span>
       </div>
 
       <div className="content">
-        {screen === "picker" && (
-          <AppPicker onAppSelected={handleAppSelected} />
+        {screen === "hub" && (
+          <div className="hub-layout">
+            <div className={`hub-picker ${hubChatOpen ? "hub-picker-with-chat" : ""}`}>
+              <AppPicker
+                onAppSelected={handleAppSelected}
+                onAppsLoaded={handleAppsLoaded}
+                providerStatus={providerStatus}
+              />
+            </div>
+
+            {/* Hub chat toggle button */}
+            {!hubChatOpen && (
+              <button
+                className="hub-chat-toggle"
+                onClick={() => setHubChatOpen(true)}
+                title="Open Setup Agent chat"
+              >
+                <span className="hub-chat-toggle-icon">?</span>
+                <span>Setup Agent</span>
+              </button>
+            )}
+
+            {/* Hub chat panel */}
+            {hubChatOpen && (
+              <div className="hub-chat">
+                <div className="hub-chat-header-bar">
+                  <span className="hub-chat-title">Setup Agent</span>
+                  <button
+                    className="hub-chat-close"
+                    onClick={() => setHubChatOpen(false)}
+                    title="Close chat"
+                  >
+                    {"\u2715"}
+                  </button>
+                </div>
+                <ChatPanel
+                  selectedModel={selectedModel}
+                  onModelChange={setSelectedModel}
+                  providerStatus={providerStatus}
+                  title="Setup Agent"
+                  placeholder="Ask about setting up apps, providers..."
+                />
+              </div>
+            )}
+          </div>
         )}
+
         {screen === "chat" && targetApp && (
           <ChatPanel
             targetApp={targetApp}
             selectedModel={selectedModel}
             onModelChange={setSelectedModel}
             onBack={handleBack}
+            providerStatus={providerStatus}
           />
         )}
       </div>

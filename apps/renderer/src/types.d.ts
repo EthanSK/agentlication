@@ -1,4 +1,9 @@
-import type { TargetApp, CdpTarget, AgentEvent, ProviderKind } from "@agentlication/contracts";
+import type {
+  TargetApp,
+  CdpTarget,
+  AgentEvent,
+  ProviderStatusMap,
+} from "@agentlication/contracts";
 
 interface AgentlicationAPI {
   scanApps: () => Promise<TargetApp[]>;
@@ -10,7 +15,7 @@ interface AgentlicationAPI {
   agentSend: (message: string, modelId: string) => Promise<void>;
   agentCancel: () => Promise<void>;
   onAgentEvent: (callback: (event: AgentEvent) => void) => () => void;
-  checkProviders: () => Promise<Record<ProviderKind, boolean>>;
+  checkProviders: () => Promise<ProviderStatusMap>;
 }
 
 declare global {
