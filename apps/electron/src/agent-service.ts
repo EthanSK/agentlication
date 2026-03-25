@@ -116,10 +116,10 @@ class ClaudeProvider implements Provider {
 
     // Map model IDs to claude CLI model names
     const modelMap: Record<string, string> = {
-      "sonnet-4.5": "claude-sonnet-4-5-20250514",
-      "opus-4.6": "claude-opus-4-6-20250514",
+      "sonnet-4.5": "sonnet",
+      "opus-4.6": "opus",
     };
-    const cliModel = modelMap[modelId] || "claude-sonnet-4-5-20250514";
+    const cliModel = modelMap[modelId] || "sonnet";
 
     return new Promise((resolve, reject) => {
       // Use the resolved absolute path so we don't need shell: true.
@@ -134,9 +134,10 @@ class ClaudeProvider implements Provider {
         this.resolvedPath!,
         [
           "--print",
+          "--verbose",
           "--output-format",
           "stream-json",
-          "-m",
+          "--model",
           cliModel,
           "--system-prompt",
           systemPrompt,
@@ -167,9 +168,9 @@ class ClaudeProvider implements Provider {
                   timestamp: Date.now(),
                 });
               }
-            } else if (parsed.type === "assistant" && parsed.content) {
+            } else if (parsed.type === "assistant" && parsed.message?.content) {
               // Full message event — extract text blocks
-              for (const block of parsed.content) {
+              for (const block of parsed.message.content) {
                 if (block.type === "text" && block.text) {
                   onEvent({
                     kind: "agent:chunk",
