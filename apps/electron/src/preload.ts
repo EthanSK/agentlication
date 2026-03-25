@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld("agentlication", {
   // App picker
   scanApps: () => ipcRenderer.invoke(IPC.SCAN_APPS),
   launchApp: (appPath: string) => ipcRenderer.invoke(IPC.LAUNCH_APP, appPath),
+  isAppAgentified: (appName: string) => ipcRenderer.invoke(IPC.APP_IS_AGENTIFIED, appName),
 
   // CDP
   cdpConnect: (port: number) => ipcRenderer.invoke(IPC.CDP_CONNECT, port),

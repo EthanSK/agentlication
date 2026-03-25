@@ -9,9 +9,10 @@ export interface ProviderModel {
   cliName: string; // the CLI binary name (e.g. "claude", "codex")
 }
 
+// Models are ordered biggest/latest first. Update this list when new models are released.
 export const MODELS: ProviderModel[] = [
-  { id: "sonnet-4.5", label: "Claude Sonnet 4.5", provider: "claude", cliName: "claude" },
   { id: "opus-4.6", label: "Claude Opus 4.6", provider: "claude", cliName: "claude" },
+  { id: "sonnet-4.5", label: "Claude Sonnet 4.5", provider: "claude", cliName: "claude" },
   { id: "gpt-5.4", label: "Codex GPT-5.4", provider: "codex", cliName: "codex" },
   { id: "gpt-5.3", label: "Codex GPT-5.3", provider: "codex", cliName: "codex" },
 ];
@@ -51,9 +52,10 @@ export const THINKING_LEVELS: Record<ProviderKind, ThinkingLevel[]> = {
   ],
 };
 
+// Default thinking level — update if new levels are added
 export const DEFAULT_THINKING_LEVEL: Record<ProviderKind, string> = {
-  claude: "medium",
-  codex: "medium",
+  claude: "high",
+  codex: "high",
 };
 
 // ── Provider status ─────────────────────────────────────────────
@@ -131,6 +133,7 @@ export const IPC = {
   // App picker
   SCAN_APPS: "app:scan",
   LAUNCH_APP: "app:launch",
+  APP_IS_AGENTIFIED: "app:is-agentified",
 
   // CDP
   CDP_CONNECT: "cdp:connect",

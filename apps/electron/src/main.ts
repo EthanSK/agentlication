@@ -1,5 +1,7 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import * as path from "path";
+import * as fs from "fs";
+import * as os from "os";
 import { IPC } from "@agentlication/contracts";
 import { AgentService } from "./agent-service";
 import { CdpService } from "./cdp-service";
@@ -68,6 +70,17 @@ function registerIpcHandlers() {
   // App scanning
   ipcMain.handle(IPC.SCAN_APPS, async () => {
     return scanElectronApps();
+  });
+
+  // Check if an app has been agentified (has a per-app profile)
+  ipcMain.handle(IPC.APP_IS_AGENTIFIED, async (_event, appName: string) => {
+    const profileDir = path.join(os.homedir(), ".agentlication", "apps", appName);
+    try {
+      const stat = fs.statSync(profileDir);
+      return stat.isDirectory();
+    } catch {
+      return false;
+    }
   });
 
   // Launch target app with debugging

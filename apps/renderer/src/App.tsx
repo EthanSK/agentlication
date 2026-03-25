@@ -10,7 +10,8 @@ type Screen = "hub" | "chat";
 export default function App() {
   const [screen, setScreen] = useState<Screen>("hub");
   const [targetApp, setTargetApp] = useState<TargetApp | null>(null);
-  const [selectedModel, setSelectedModel] = useState("sonnet-4.5");
+  // Default to biggest Claude model; falls back to biggest Codex if Claude unavailable
+  const [selectedModel, setSelectedModel] = useState("opus-4.6");
   const [thinkingLevel, setThinkingLevel] = useState(DEFAULT_THINKING_LEVEL.claude);
   const [providerStatus, setProviderStatus] = useState<ProviderStatusMap | null>(null);
   const [detectedApps, setDetectedApps] = useState<TargetApp[]>([]);
@@ -27,9 +28,9 @@ export default function App() {
         const status = await window.agentlication.checkProviders();
         setProviderStatus(status as ProviderStatusMap);
 
-        // Auto-select first available provider's model
+        // Auto-select biggest available model (update when new models are released)
         if (status.claude?.installed) {
-          setSelectedModel("sonnet-4.5");
+          setSelectedModel("opus-4.6");
         } else if (status.codex?.installed) {
           setSelectedModel("gpt-5.4");
           setThinkingLevel(DEFAULT_THINKING_LEVEL.codex);

@@ -15,6 +15,7 @@ export default function AppPicker({
   const [customPath, setCustomPath] = useState("");
   const [launching, setLaunching] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [agentifiedApps, setAgentifiedApps] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     loadApps();
@@ -36,6 +37,18 @@ export default function AppPicker({
       }
       setApps(scanned);
       onAppsLoaded?.(scanned);
+
+      // Check which apps are already agentified
+      if (window.agentlication) {
+        const tracked = new Set<string>();
+        await Promise.all(
+          scanned.map(async (app) => {
+            const isTracked = await window.agentlication.isAppAgentified(app.name);
+            if (isTracked) tracked.add(app.name);
+          })
+        );
+        setAgentifiedApps(tracked);
+      }
     } catch (err) {
       setError(String(err));
     } finally {
@@ -124,12 +137,19 @@ export default function AppPicker({
                 <span className="app-name">{app.name}</span>
                 <span className="app-path">{app.path}</span>
               </div>
+              {agentifiedApps.has(app.name) && (
+                <span className="agentified-badge">Agentified</span>
+              )}
               <button
                 className="agentify-btn"
                 onClick={() => handleAgentify(app)}
                 disabled={launching === app.path}
               >
-                {launching === app.path ? "Launching..." : "Agentify"}
+                {launching === app.path
+                  ? "Launching..."
+                  : agentifiedApps.has(app.name)
+                    ? "Reconnect"
+                    : "Agentify"}
               </button>
             </div>
           ))
