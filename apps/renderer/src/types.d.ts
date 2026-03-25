@@ -14,6 +14,7 @@ interface AgentlicationAPI {
   cdpEvaluate: (js: string) => Promise<unknown>;
   cdpListTargets: () => Promise<CdpTarget[]>;
   agentSend: (message: string, modelId: string) => Promise<void>;
+  agentSendHub: (message: string, modelId: string, systemPrompt: string) => Promise<void>;
   agentCancel: () => Promise<void>;
   onAgentEvent: (callback: (event: AgentEvent) => void) => () => void;
   checkProviders: () => Promise<ProviderStatusMap>;

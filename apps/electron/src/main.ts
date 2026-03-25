@@ -116,6 +116,22 @@ function registerIpcHandlers() {
     }
   );
 
+  // Agent operations — Hub / Setup Agent chat (custom system prompt, no CDP)
+  ipcMain.handle(
+    IPC.AGENT_SEND_HUB,
+    async (_event, message: string, modelId: string, systemPrompt: string) => {
+      const onEvent = (event: unknown) => {
+        mainWindow?.webContents.send(IPC.AGENT_EVENT, event);
+      };
+      return agentService.sendWithSystemPrompt(
+        message,
+        modelId,
+        systemPrompt,
+        onEvent
+      );
+    }
+  );
+
   ipcMain.handle(IPC.AGENT_CANCEL, async () => {
     return agentService.cancel();
   });

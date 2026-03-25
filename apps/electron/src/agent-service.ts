@@ -1,4 +1,7 @@
 import { spawn, ChildProcess, execFileSync } from "child_process";
+import * as path from "path";
+import * as os from "os";
+import * as fs from "fs";
 import {
   AgentEvent,
   ProviderKind,
@@ -21,13 +24,42 @@ interface Provider {
   isAvailable(): Promise<boolean>;
 }
 
-function cliExists(name: string): boolean {
-  try {
-    execFileSync("which", [name], { stdio: "pipe" });
-    return true;
-  } catch {
-    return false;
+/**
+ * Resolve the full path to a CLI binary. Checks common locations that
+ * Electron's child processes might not have on PATH.
+ */
+function resolveCliBinary(name: string): string | null {
+  // Try common install locations first (Electron often has a minimal PATH)
+  const candidates = [
+    path.join(os.homedir(), ".local", "bin", name),
+    `/usr/local/bin/${name}`,
+    `/opt/homebrew/bin/${name}`,
+    path.join(os.homedir(), ".npm-global", "bin", name),
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      fs.accessSync(candidate, fs.constants.X_OK);
+      return candidate;
+    } catch {
+      // not found here
+    }
   }
+
+  // Fall back to `which` via shell
+  try {
+    return execFileSync("which", [name], {
+      stdio: ["pipe", "pipe", "pipe"],
+      encoding: "utf-8",
+      env: { ...process.env, PATH: `${process.env.PATH || ""}:${path.join(os.homedir(), ".local", "bin")}:/usr/local/bin:/opt/homebrew/bin` },
+    }).trim();
+  } catch {
+    return null;
+  }
+}
+
+function cliExists(name: string): boolean {
+  return resolveCliBinary(name) !== null;
 }
 
 /**
@@ -52,12 +84,15 @@ function getCliVersion(name: string, args: string[] = ["--version"]): string | n
 
 class ClaudeProvider implements Provider {
   private process: ChildProcess | null = null;
+  private resolvedPath: string | null = null;
   public cliVersion: string | null = null;
 
   async isAvailable(): Promise<boolean> {
-    if (!cliExists("claude")) return false;
+    const resolved = resolveCliBinary("claude");
+    if (!resolved) return false;
+    this.resolvedPath = resolved;
     // Verify the CLI actually works by checking its version
-    this.cliVersion = getCliVersion("claude");
+    this.cliVersion = getCliVersion(resolved, ["--version"]);
     return this.cliVersion !== null;
   }
 
@@ -68,7 +103,7 @@ class ClaudeProvider implements Provider {
     onEvent: (event: AgentEvent) => void
   ): Promise<void> {
     const available = await this.isAvailable();
-    if (!available) {
+    if (!available || !this.resolvedPath) {
       onEvent({
         kind: "agent:error",
         payload: {
@@ -87,8 +122,16 @@ class ClaudeProvider implements Provider {
     const cliModel = modelMap[modelId] || "claude-sonnet-4-5-20250514";
 
     return new Promise((resolve, reject) => {
+      // Use the resolved absolute path so we don't need shell: true.
+      // This avoids shell interpretation of special characters in the
+      // system prompt and user message.
+      const augmentedEnv = {
+        ...process.env,
+        PATH: `${process.env.PATH || ""}:${path.join(os.homedir(), ".local", "bin")}:/usr/local/bin:/opt/homebrew/bin`,
+      };
+
       this.process = spawn(
-        "claude",
+        this.resolvedPath!,
         [
           "--print",
           "--output-format",
@@ -99,7 +142,7 @@ class ClaudeProvider implements Provider {
           systemPrompt,
           message,
         ],
-        { shell: true }
+        { env: augmentedEnv }
       );
 
       let buffer = "";
@@ -238,12 +281,15 @@ class ClaudeProvider implements Provider {
 
 class CodexProvider implements Provider {
   private process: ChildProcess | null = null;
+  private resolvedPath: string | null = null;
   public cliVersion: string | null = null;
 
   async isAvailable(): Promise<boolean> {
-    if (!cliExists("codex")) return false;
+    const resolved = resolveCliBinary("codex");
+    if (!resolved) return false;
+    this.resolvedPath = resolved;
     // Verify the CLI actually works by checking its help output
-    this.cliVersion = getCliVersion("codex", ["--help"]);
+    this.cliVersion = getCliVersion(resolved, ["--help"]);
     return this.cliVersion !== null;
   }
 
@@ -254,7 +300,7 @@ class CodexProvider implements Provider {
     onEvent: (event: AgentEvent) => void
   ): Promise<void> {
     const available = await this.isAvailable();
-    if (!available) {
+    if (!available || !this.resolvedPath) {
       onEvent({
         kind: "agent:error",
         payload: {
@@ -271,11 +317,16 @@ class CodexProvider implements Provider {
     };
     const cliModel = modelMap[modelId] || "gpt-5.4";
 
+    const augmentedEnv = {
+      ...process.env,
+      PATH: `${process.env.PATH || ""}:${path.join(os.homedir(), ".local", "bin")}:/usr/local/bin:/opt/homebrew/bin`,
+    };
+
     return new Promise((resolve, reject) => {
       this.process = spawn(
-        "codex",
+        this.resolvedPath!,
         ["--model", cliModel, "--quiet", message],
-        { shell: true }
+        { env: augmentedEnv }
       );
 
       this.process.stdout?.on("data", (data: Buffer) => {

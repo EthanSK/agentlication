@@ -143,6 +143,7 @@ export const IPC = {
 
   // Agent
   AGENT_SEND: "agent:send",
+  AGENT_SEND_HUB: "agent:send-hub",
   AGENT_EVENT: "agent:event",
   AGENT_CANCEL: "agent:cancel",
 

@@ -8,6 +8,19 @@ import type {
 } from "@agentlication/contracts";
 import ChatComposer from "./ChatComposer";
 
+const SETUP_AGENT_SYSTEM_PROMPT = `You are the Agentlication Setup Agent — a friendly, knowledgeable assistant that helps users set up and configure their Electron applications for use with Agentlication.
+
+You can help with:
+1. Explaining what Agentlication does (it lets AI agents see and interact with Electron apps via Chrome DevTools Protocol)
+2. Guiding users through selecting and connecting to their Electron apps
+3. Explaining provider setup (Claude CLI, Codex CLI) and how to install them
+4. Troubleshooting connection issues
+5. Answering questions about how agents interact with apps (DOM inspection, JS execution, UI injection)
+
+Be concise, helpful, and friendly. Use markdown formatting for clarity. When listing steps, use numbered lists. Keep responses focused and actionable.
+
+You do NOT have access to the user's filesystem or any tools — you are a conversational assistant only. Do not hallucinate capabilities you don't have.`;
+
 interface Props {
   /** If provided, this is a Companion chat (per-app). Otherwise it's the Hub chat. */
   targetApp?: TargetApp;
@@ -108,7 +121,17 @@ export default function ChatPanel({
     setStreamingText("");
 
     if (window.agentlication) {
-      await window.agentlication.agentSend(text, selectedModel);
+      if (targetApp) {
+        // Companion chat — uses CDP context
+        await window.agentlication.agentSend(text, selectedModel);
+      } else {
+        // Hub / Setup Agent chat — uses dedicated system prompt
+        await window.agentlication.agentSendHub(
+          text,
+          selectedModel,
+          SETUP_AGENT_SYSTEM_PROMPT
+        );
+      }
     } else {
       // Dev mode mock
       const context = targetApp

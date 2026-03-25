@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld("agentlication", {
   // Agent
   agentSend: (message: string, modelId: string) =>
     ipcRenderer.invoke(IPC.AGENT_SEND, message, modelId),
+  agentSendHub: (message: string, modelId: string, systemPrompt: string) =>
+    ipcRenderer.invoke(IPC.AGENT_SEND_HUB, message, modelId, systemPrompt),
   agentCancel: () => ipcRenderer.invoke(IPC.AGENT_CANCEL),
   onAgentEvent: (callback: (event: unknown) => void) => {
     const handler = (_event: unknown, data: unknown) => callback(data);
