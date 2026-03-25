@@ -30,11 +30,35 @@ function cliExists(name: string): boolean {
   }
 }
 
+/**
+ * Get the version string from a CLI tool, or null if unavailable.
+ */
+function getCliVersion(name: string, args: string[] = ["--version"]): string | null {
+  try {
+    return execFileSync(name, args, {
+      stdio: ["pipe", "pipe", "pipe"],
+      encoding: "utf-8",
+      timeout: 5000,
+    }).trim();
+  } catch {
+    return null;
+  }
+}
+
+// TODO: Implement true dynamic model discovery when the CLIs support listing
+// available models (e.g. `claude models list`, `codex --list-models`).
+// For now we verify CLI availability via version checks at startup and keep
+// the model list hardcoded in @agentlication/contracts.
+
 class ClaudeProvider implements Provider {
   private process: ChildProcess | null = null;
+  public cliVersion: string | null = null;
 
   async isAvailable(): Promise<boolean> {
-    return cliExists("claude");
+    if (!cliExists("claude")) return false;
+    // Verify the CLI actually works by checking its version
+    this.cliVersion = getCliVersion("claude");
+    return this.cliVersion !== null;
   }
 
   async send(
@@ -214,9 +238,13 @@ class ClaudeProvider implements Provider {
 
 class CodexProvider implements Provider {
   private process: ChildProcess | null = null;
+  public cliVersion: string | null = null;
 
   async isAvailable(): Promise<boolean> {
-    return cliExists("codex");
+    if (!cliExists("codex")) return false;
+    // Verify the CLI actually works by checking its help output
+    this.cliVersion = getCliVersion("codex", ["--help"]);
+    return this.cliVersion !== null;
   }
 
   async send(
@@ -418,17 +446,28 @@ export class AgentService {
   }
 
   async checkProviders(): Promise<ProviderStatusMap> {
-    const [claude, codex] = await Promise.all([
+    const [claudeAvail, codexAvail] = await Promise.all([
       this.providers.claude.isAvailable(),
       this.providers.codex.isAvailable(),
     ]);
+
+    const claudeProvider = this.providers.claude as ClaudeProvider;
+    const codexProvider = this.providers.codex as CodexProvider;
+
+    if (claudeAvail) {
+      console.log(`[AgentService] Claude CLI detected: ${claudeProvider.cliVersion}`);
+    }
+    if (codexAvail) {
+      console.log(`[AgentService] Codex CLI detected`);
+    }
+
     return {
       claude: {
-        installed: claude,
+        installed: claudeAvail,
         installCommand: PROVIDER_INSTALL_COMMANDS.claude,
       },
       codex: {
-        installed: codex,
+        installed: codexAvail,
         installCommand: PROVIDER_INSTALL_COMMANDS.codex,
       },
     };

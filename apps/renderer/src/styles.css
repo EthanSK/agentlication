@@ -847,18 +847,29 @@ body {
 }
 
 .send-btn, .cancel-btn {
-  padding: 10px 20px;
   border: none;
-  border-radius: var(--radius);
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s;
 }
 
+.cancel-btn {
+  padding: 10px 20px;
+  border-radius: var(--radius);
+}
+
 .send-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 50%;
   background: var(--accent);
   color: white;
+  flex-shrink: 0;
 }
 
 .send-btn:hover:not(:disabled) {

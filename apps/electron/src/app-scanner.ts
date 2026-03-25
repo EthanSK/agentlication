@@ -1,10 +1,24 @@
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import { spawn, execFileSync } from "child_process";
 import type { TargetApp } from "@agentlication/contracts";
 
 const APPLICATIONS_DIR = "/Applications";
 const ICONS_DIR = "/tmp/agentlication-icons";
+
+/**
+ * Subdirectory paths (relative to each project) where Electron build output
+ * commonly lives. Each is checked for .app bundles.
+ */
+const DEV_BUILD_SUBDIRS = [
+  "release/mac-arm64",
+  "release/mac",
+  "dist/mac-arm64",
+  "dist/mac",
+  "out",
+];
+
 const ELECTRON_INDICATORS = [
   "Electron Framework.framework",
   "Electron",
@@ -62,11 +76,14 @@ function extractAppIcon(appPath: string, appName: string): string | undefined {
 }
 
 /**
- * Scan /Applications for Electron apps by checking for Electron framework files.
+ * Scan /Applications and common Electron build output directories for Electron apps.
+ * De-duplicates by app name, preferring /Applications/ version when both exist.
  */
 export function scanElectronApps(): TargetApp[] {
-  const apps: TargetApp[] = [];
+  /** Map from app name -> TargetApp (used for de-duplication) */
+  const appMap = new Map<string, TargetApp>();
 
+  // 1. Scan /Applications (preferred source)
   try {
     const entries = fs.readdirSync(APPLICATIONS_DIR);
 
@@ -79,7 +96,7 @@ export function scanElectronApps(): TargetApp[] {
 
       if (isElectron) {
         const icon = extractAppIcon(appPath, appName);
-        apps.push({
+        appMap.set(appName, {
           name: appName,
           path: appPath,
           icon,
@@ -88,10 +105,55 @@ export function scanElectronApps(): TargetApp[] {
       }
     }
   } catch (err) {
-    console.error("Failed to scan applications:", err);
+    console.error("Failed to scan /Applications:", err);
   }
 
-  return apps.sort((a, b) => a.name.localeCompare(b.name));
+  // 2. Scan dev build output directories under ~/Projects
+  try {
+    const projectsDir = path.join(os.homedir(), "Projects");
+    if (fs.existsSync(projectsDir)) {
+      const projects = fs.readdirSync(projectsDir);
+      for (const project of projects) {
+        const projectPath = path.join(projectsDir, project);
+        try {
+          if (!fs.statSync(projectPath).isDirectory()) continue;
+        } catch {
+          continue;
+        }
+
+        for (const subdir of DEV_BUILD_SUBDIRS) {
+          const buildDir = path.join(projectPath, subdir);
+          try {
+            if (!fs.existsSync(buildDir)) continue;
+            const entries = fs.readdirSync(buildDir);
+            for (const entry of entries) {
+              if (!entry.endsWith(".app")) continue;
+              const appPath = path.join(buildDir, entry);
+              const appName = entry.replace(".app", "");
+              // Only add if not already found in /Applications (prefer system installs)
+              if (!appMap.has(appName) && checkIfElectron(appPath)) {
+                const icon = extractAppIcon(appPath, appName);
+                appMap.set(appName, {
+                  name: appName,
+                  path: appPath,
+                  icon,
+                  isElectron: true,
+                });
+              }
+            }
+          } catch {
+            // Skip inaccessible directories
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Failed to scan dev build directories:", err);
+  }
+
+  return Array.from(appMap.values()).sort((a, b) =>
+    a.name.localeCompare(b.name)
+  );
 }
 
 function checkIfElectron(appPath: string): boolean {
