@@ -7,6 +7,18 @@
 - "Agentlication" = Agent + Application
 - Domain: agentlication.ai (purchased)
 
+## Terminology
+
+- **Hub** — the main Agentlication window; lists installed apps, lets you agentify them, has its own Setup Agent chat
+- **Companion** — the AI agent instance attached to a target app (each app gets its own Companion Agent)
+- **Target App** — the Electron app being agentified
+- **App Profile** — per-app config + source + patches stored at `~/.agentlication/apps/{app-name}/`
+- **Source Mirror** — local clone of the target app's open-source repo, version-matched to the installed binary
+- **Patches** — runtime JS/TSX snippets injected via CDP (not source code diffs); Greasemonkey-style
+- **Harness** (`harness.md`) — per-app instruction file for the Companion Agent with app-specific context and learnings
+- **Setup Agent** — the Hub's own chat agent for initial configuration, onboarding, troubleshooting
+- **Companion Agent** — the per-app chat agent that understands the target app's DOM, state, and harness
+
 ## Architecture
 
 - CDP to connect to Electron apps, read DOM + app state, execute JS
@@ -18,6 +30,42 @@
 - Screenshots AND DOM snapshots for agent context
 - Can read React/Vue/Angular component state, Redux stores, localStorage, etc.
 
+### App Profile Structure
+
+```
+~/.agentlication/apps/{app-name}/
+  profile.json        # app metadata, version, CDP port, preferences
+  source/             # source mirror — git clone of open-source repo, version-matched
+  patches/            # user's runtime patches (JS/TSX files with metadata headers)
+  harness.md          # per-app agent instructions, accumulates learnings
+```
+
+### Source Mirror
+
+- Auto-pulled when agentifying an app for the first time
+- Version-matched to the installed app binary (e.g., Slack 4.38 -> git tag v4.38)
+- Agentify button checks for open-source repo online before cloning
+- Gives the Companion Agent full source context without modifying the installed app
+- Updated on app version change
+
+### Runtime Patches (Greasemonkey Model)
+
+- Patches are injected at runtime via CDP, NOT applied as source code diffs
+- Works for both open-source AND closed-source Electron apps
+- Patch file format includes metadata headers (target app, version, author, description)
+- User patches backed up to a private Git repo automatically
+- Hybrid format: raw JS by default, optional TSX with esbuild compile step
+- Can piggyback on the target app's React instance if it has one (no duplicate React)
+- Patches persist across reloads by re-injecting on CDP connect
+
+### Floating Chat Panel
+
+- Inspired by AI Music Video Studio's floating chat
+- Drag-to-dock on any edge of the target app window
+- Resize by dragging the edge
+- Undock to a separate floating window
+- Can be minimized to a small fab button
+
 ## Agent Capabilities
 
 - Read full app state (not just DOM — JS variables, stores, etc.)
@@ -25,8 +73,15 @@
 - Click buttons, fill forms, navigate
 - Match existing app's design system from CSS variables
 - Persist injected UI across reloads
-- Voice input via Deepgram + ElevenLabs
+- Voice input via Deepgram, speech output via ElevenLabs
 - Configurable push-to-talk keyboard shortcut
+
+### Model Picker
+
+- Grouped by provider (Claude, Codex, etc.)
+- Shows green/red status dots based on CLI availability
+- Thinking modes toggle (like T3 Code's extended thinking)
+- Persists selection per-app in the App Profile
 
 ## Pipeline / Factory (Internal — Secret Sauce)
 
@@ -74,6 +129,7 @@
 - VS Code, Slack, Notion, Figma, Spotify (CEF), Teams, Discord (avoid targeting), Bitwarden, Joplin, Logseq, Obsidian (closed), Hyper, Tabby, Insomnia, Signal, etc.
 - Music: Splice is the biggest Electron music app
 - No serious Electron DAWs exist — opportunity
+- **Producer Player** — good test target for development (Ethan's own app)
 
 ## Technical Details
 
