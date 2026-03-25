@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from "react";
 import type { TargetApp, ProviderStatusMap } from "@agentlication/contracts";
+import { DEFAULT_THINKING_LEVEL } from "@agentlication/contracts";
 import AppPicker from "./AppPicker";
 import ChatPanel from "./ChatPanel";
+import ModelPicker from "./ModelPicker";
 
 type Screen = "hub" | "chat";
 
@@ -9,6 +11,7 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>("hub");
   const [targetApp, setTargetApp] = useState<TargetApp | null>(null);
   const [selectedModel, setSelectedModel] = useState("sonnet-4.5");
+  const [thinkingLevel, setThinkingLevel] = useState(DEFAULT_THINKING_LEVEL.claude);
   const [providerStatus, setProviderStatus] = useState<ProviderStatusMap | null>(null);
   const [detectedApps, setDetectedApps] = useState<TargetApp[]>([]);
   const [hubChatOpen, setHubChatOpen] = useState(false);
@@ -29,6 +32,7 @@ export default function App() {
           setSelectedModel("sonnet-4.5");
         } else if (status.codex?.installed) {
           setSelectedModel("gpt-5.4");
+          setThinkingLevel(DEFAULT_THINKING_LEVEL.codex);
         }
       } catch {
         // Ignore — status will remain null
@@ -65,6 +69,14 @@ export default function App() {
             ? `Agentlication \u2014 ${targetApp.name}`
             : "Agentlication"}
         </span>
+        <div className="titlebar-spacer" />
+        <ModelPicker
+          selected={selectedModel}
+          onChange={setSelectedModel}
+          providerStatus={providerStatus}
+          thinkingLevel={thinkingLevel}
+          onThinkingLevelChange={setThinkingLevel}
+        />
       </div>
 
       <div className="content">
@@ -74,7 +86,6 @@ export default function App() {
               <AppPicker
                 onAppSelected={handleAppSelected}
                 onAppsLoaded={handleAppsLoaded}
-                providerStatus={providerStatus}
               />
             </div>
 
@@ -105,7 +116,6 @@ export default function App() {
                 </div>
                 <ChatPanel
                   selectedModel={selectedModel}
-                  onModelChange={setSelectedModel}
                   providerStatus={providerStatus}
                   title="Setup Agent"
                   placeholder="Ask about setting up apps, providers..."
@@ -119,7 +129,6 @@ export default function App() {
           <ChatPanel
             targetApp={targetApp}
             selectedModel={selectedModel}
-            onModelChange={setSelectedModel}
             onBack={handleBack}
             providerStatus={providerStatus}
           />

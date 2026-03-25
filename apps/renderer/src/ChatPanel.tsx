@@ -7,13 +7,11 @@ import type {
   ProviderStatusMap,
 } from "@agentlication/contracts";
 import ChatComposer from "./ChatComposer";
-import ModelPicker from "./ModelPicker";
 
 interface Props {
   /** If provided, this is a Companion chat (per-app). Otherwise it's the Hub chat. */
   targetApp?: TargetApp;
   selectedModel: string;
-  onModelChange: (model: string) => void;
   onBack?: () => void;
   providerStatus: ProviderStatusMap | null;
   /** Title override for Hub mode */
@@ -30,7 +28,6 @@ function nextId(): string {
 export default function ChatPanel({
   targetApp,
   selectedModel,
-  onModelChange,
   onBack,
   providerStatus,
   title,
@@ -152,11 +149,6 @@ export default function ChatPanel({
           </button>
         )}
         <span className="chat-target-name">{displayTitle}</span>
-        <ModelPicker
-          selected={selectedModel}
-          onChange={onModelChange}
-          providerStatus={providerStatus}
-        />
       </div>
 
       {/* Messages */}

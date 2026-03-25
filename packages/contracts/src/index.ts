@@ -30,6 +30,32 @@ export const MODEL_GROUPS: { provider: ProviderKind; label: string; models: Prov
   },
 ];
 
+// ── Thinking / effort modes ─────────────────────────────────────
+
+export interface ThinkingLevel {
+  value: string;
+  label: string;
+}
+
+export const THINKING_LEVELS: Record<ProviderKind, ThinkingLevel[]> = {
+  claude: [
+    { value: "low", label: "Low" },
+    { value: "medium", label: "Medium" },
+    { value: "high", label: "High" },
+    { value: "ultrathink", label: "Ultrathink" },
+  ],
+  codex: [
+    { value: "low", label: "Low" },
+    { value: "medium", label: "Medium" },
+    { value: "high", label: "High" },
+  ],
+};
+
+export const DEFAULT_THINKING_LEVEL: Record<ProviderKind, string> = {
+  claude: "medium",
+  codex: "medium",
+};
+
 // ── Provider status ─────────────────────────────────────────────
 
 export interface ProviderStatus {

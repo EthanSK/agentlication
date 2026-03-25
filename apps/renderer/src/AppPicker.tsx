@@ -1,17 +1,14 @@
 import React, { useEffect, useState } from "react";
-import type { TargetApp, ProviderStatusMap, ProviderKind } from "@agentlication/contracts";
-import { PROVIDER_INSTALL_COMMANDS } from "@agentlication/contracts";
+import type { TargetApp } from "@agentlication/contracts";
 
 interface Props {
   onAppSelected: (app: TargetApp) => void;
   onAppsLoaded?: (apps: TargetApp[]) => void;
-  providerStatus?: ProviderStatusMap | null;
 }
 
 export default function AppPicker({
   onAppSelected,
   onAppsLoaded,
-  providerStatus,
 }: Props) {
   const [apps, setApps] = useState<TargetApp[]>([]);
   const [loading, setLoading] = useState(true);
@@ -88,35 +85,6 @@ export default function AppPicker({
         <h1>Agentlication</h1>
         <p className="subtitle">Select an Electron app to agentify</p>
       </div>
-
-      {/* Provider status banner */}
-      {providerStatus && (
-        <div className="provider-banner">
-          {(["claude", "codex"] as ProviderKind[]).map((provider) => {
-            const status = providerStatus[provider];
-            const name = provider === "claude" ? "Claude Code CLI" : "Codex CLI";
-            return (
-              <div key={provider} className="provider-banner-item">
-                <span
-                  className={
-                    status?.installed
-                      ? "status-dot status-dot-ready"
-                      : "status-dot status-dot-missing"
-                  }
-                />
-                <span className="provider-banner-name">{name}</span>
-                {status?.installed ? (
-                  <span className="provider-banner-ok">ready</span>
-                ) : (
-                  <span className="provider-banner-install">
-                    <code>{PROVIDER_INSTALL_COMMANDS[provider]}</code>
-                  </span>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
 
       {/* Custom path input */}
       <div className="custom-path">

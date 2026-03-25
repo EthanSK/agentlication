@@ -23,6 +23,8 @@
   --success: #4dff88;
   --radius: 10px;
   --radius-sm: 6px;
+  --claude-color: #d97757;
+  --codex-color: #74aa9c;
 }
 
 html, body, #root {
@@ -65,6 +67,10 @@ body {
   font-size: 13px;
   color: var(--text-secondary);
   font-weight: 500;
+}
+
+.titlebar-spacer {
+  flex: 1;
 }
 
 .content {
@@ -300,97 +306,189 @@ body {
   font-weight: 600;
 }
 
-/* ── Model Picker ─────────────────────────────────────────────── */
+/* ── Model Picker (T3-style) ─────────────────────────────────── */
+
+.model-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  -webkit-app-region: no-drag;
+}
+
+.model-picker-sep {
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+  user-select: none;
+}
 
 .model-picker-container {
   position: relative;
-  -webkit-app-region: no-drag;
 }
 
 .model-picker-trigger {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 10px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border);
+  padding: 4px 8px;
+  background: transparent;
+  border: none;
   border-radius: var(--radius-sm);
-  color: var(--text-primary);
-  font-size: 13px;
+  color: var(--text-secondary);
+  font-size: 12px;
   cursor: pointer;
-  transition: border-color 0.15s;
+  transition: background 0.12s, color 0.12s;
   white-space: nowrap;
 }
 
 .model-picker-trigger:hover {
-  border-color: #444;
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.model-trigger-icon {
+  flex-shrink: 0;
+}
+
+.model-icon-claude {
+  color: var(--claude-color);
+}
+
+.model-icon-codex {
+  color: var(--codex-color);
 }
 
 .model-picker-label {
-  flex: 1;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .model-picker-chevron {
-  font-size: 9px;
-  color: var(--text-muted);
+  flex-shrink: 0;
+  opacity: 0.5;
 }
+
+.model-picker-effort-trigger {
+  color: var(--text-secondary);
+}
+
+/* ── Dropdown ─────────────────────────────────────────────────── */
 
 .model-picker-dropdown {
   position: absolute;
   top: calc(100% + 4px);
-  right: 0;
+  left: 0;
   min-width: 240px;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-  z-index: 100;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  z-index: 1000;
   overflow: hidden;
+  animation: dropdown-in 0.12s ease-out;
 }
+
+.model-picker-effort-dropdown {
+  min-width: 180px;
+}
+
+@keyframes dropdown-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── Provider group ───────────────────────────────────────────── */
 
 .model-group {
-  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
 }
 
-.model-group + .model-group {
-  border-top: 1px solid var(--border);
+.model-group:last-child {
+  border-bottom: none;
 }
 
 .model-group-header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-muted);
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.1s;
+  text-align: left;
 }
 
-.model-group-status {
-  margin-left: auto;
-  font-weight: 400;
-  text-transform: none;
-  letter-spacing: 0;
-  font-size: 11px;
+.model-group-header:hover {
+  background: var(--bg-hover);
+}
+
+.model-group-unavailable {
+  opacity: 0.6;
+}
+
+.model-group-icon {
+  flex-shrink: 0;
+}
+
+.model-group-label {
+  flex: 1;
+}
+
+.model-group-badge {
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
+.model-group-chevron {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+
+.model-group-chevron-open {
+  transform: rotate(180deg);
+}
+
+/* ── Model list inside group ──────────────────────────────────── */
+
+.model-group-models {
+  padding: 2px 0 6px;
 }
 
 .model-option {
   display: flex;
   align-items: center;
   width: 100%;
-  padding: 8px 12px 8px 24px;
+  padding: 6px 12px 6px 36px;
   background: none;
   border: none;
   color: var(--text-primary);
   font-size: 13px;
   cursor: pointer;
   text-align: left;
-  transition: background 0.1s;
+  transition: background 0.08s;
+  gap: 8px;
 }
 
-.model-option:hover:not(:disabled) {
+.model-option:hover:not(.model-option-disabled) {
   background: var(--bg-hover);
 }
 
@@ -399,37 +497,59 @@ body {
   font-weight: 600;
 }
 
+.model-option-label {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .model-option-check {
-  margin-left: auto;
-  font-size: 14px;
+  flex-shrink: 0;
+  color: var(--accent);
 }
 
 .model-option-disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+  opacity: 0.35;
+  cursor: default;
 }
 
-.model-picker-divider {
-  height: 1px;
-  background: var(--border);
-}
+/* ── Install hint (inline in dropdown) ────────────────────────── */
 
-.model-picker-status-btn {
-  display: block;
-  width: 100%;
-  padding: 8px 12px;
-  background: none;
-  border: none;
+.model-install-hint {
+  padding: 6px 12px 8px 36px;
+  font-size: 11px;
   color: var(--text-muted);
-  font-size: 12px;
-  cursor: pointer;
-  text-align: center;
-  transition: background 0.1s;
+  line-height: 1.5;
 }
 
-.model-picker-status-btn:hover {
-  background: var(--bg-hover);
+.model-install-hint code {
+  display: inline-block;
+  margin-top: 2px;
+  background: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 10px;
   color: var(--text-secondary);
+  font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+}
+
+/* ── Effort dropdown ──────────────────────────────────────────── */
+
+.effort-header {
+  padding: 8px 12px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.effort-default-badge {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--text-muted);
+  margin-left: 4px;
 }
 
 /* ── Status dots ──────────────────────────────────────────────── */
@@ -454,93 +574,6 @@ body {
 
 .status-dot-unknown {
   background: var(--text-muted);
-}
-
-/* ── Provider status panel (inside model picker) ──────────────── */
-
-.provider-status-panel {
-  padding: 8px 12px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.provider-status-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-}
-
-.provider-status-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.provider-status-name {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.provider-status-ok {
-  font-size: 11px;
-  color: var(--success);
-}
-
-.provider-status-missing {
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
-.provider-status-missing code {
-  background: var(--bg-tertiary);
-  padding: 1px 4px;
-  border-radius: 3px;
-  font-size: 10px;
-  color: var(--text-secondary);
-}
-
-/* ── Provider banner (on app picker) ──────────────────────────── */
-
-.provider-banner {
-  display: flex;
-  gap: 16px;
-  justify-content: center;
-  margin-bottom: 20px;
-  flex-wrap: wrap;
-}
-
-.provider-banner-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-}
-
-.provider-banner-name {
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.provider-banner-ok {
-  color: var(--success);
-}
-
-.provider-banner-install {
-  color: var(--text-muted);
-}
-
-.provider-banner-install code {
-  background: var(--bg-tertiary);
-  padding: 1px 4px;
-  border-radius: 3px;
-  font-size: 10px;
-  color: var(--text-secondary);
 }
 
 /* ── Hub Layout ───────────────────────────────────────────────── */
