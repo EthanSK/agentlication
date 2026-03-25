@@ -1,1 +1,1 @@
-PLAN.md
+IDEAS.md
