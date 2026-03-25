@@ -14,7 +14,7 @@ export default function App() {
   const [thinkingLevel, setThinkingLevel] = useState(DEFAULT_THINKING_LEVEL.claude);
   const [providerStatus, setProviderStatus] = useState<ProviderStatusMap | null>(null);
   const [detectedApps, setDetectedApps] = useState<TargetApp[]>([]);
-  const [hubChatOpen, setHubChatOpen] = useState(false);
+  const [hubChatOpen, setHubChatOpen] = useState(true);
 
   // Check provider status on startup
   useEffect(() => {
@@ -87,21 +87,21 @@ export default function App() {
                 onAppSelected={handleAppSelected}
                 onAppsLoaded={handleAppsLoaded}
               />
+
+              {/* Collapsed toggle — only shows when chat is hidden */}
+              {!hubChatOpen && (
+                <button
+                  className="hub-chat-toggle"
+                  onClick={() => setHubChatOpen(true)}
+                  title="Open Setup Agent chat"
+                >
+                  <span className="hub-chat-toggle-icon">?</span>
+                  <span>Setup Agent</span>
+                </button>
+              )}
             </div>
 
-            {/* Hub chat toggle button */}
-            {!hubChatOpen && (
-              <button
-                className="hub-chat-toggle"
-                onClick={() => setHubChatOpen(true)}
-                title="Open Setup Agent chat"
-              >
-                <span className="hub-chat-toggle-icon">?</span>
-                <span>Setup Agent</span>
-              </button>
-            )}
-
-            {/* Hub chat panel */}
+            {/* Chat panel — visible by default on the right */}
             {hubChatOpen && (
               <div className="hub-chat">
                 <div className="hub-chat-header-bar">

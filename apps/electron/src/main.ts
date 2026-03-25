@@ -13,21 +13,41 @@ const isDev = !app.isPackaged;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    width: 1100,
+    height: 750,
+    minWidth: 900,
+    minHeight: 600,
+    center: true,
     title: "Agentlication",
     titleBarStyle: "hiddenInset",
     backgroundColor: "#0a0a0a",
+    autoHideMenuBar: true,
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
+      webviewTag: false,
     },
   });
 
+  // Prevent new window popups
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+
+  // Show window cleanly once content is ready (avoids white flash)
+  mainWindow.once("ready-to-show", () => {
+    mainWindow?.show();
+  });
+
   if (isDev) {
-    mainWindow.loadURL("http://localhost:5173");
-    mainWindow.webContents.openDevTools({ mode: "detach" });
+    const devUrl = process.env.RENDERER_DEV_URL ?? "http://localhost:5173";
+    mainWindow.loadURL(devUrl);
+
+    // Only open DevTools when explicitly requested via env var
+    if (process.env.ELECTRON_OPEN_DEVTOOLS === "true") {
+      mainWindow.webContents.openDevTools({ mode: "detach" });
+    }
   } else {
     const rendererPath = path.join(
       process.resourcesPath,
