@@ -289,8 +289,8 @@ class CodexProvider implements Provider {
     const resolved = resolveCliBinary("codex");
     if (!resolved) return false;
     this.resolvedPath = resolved;
-    // Verify the CLI actually works by checking its help output
-    this.cliVersion = getCliVersion(resolved, ["--help"]);
+    // Verify the CLI actually works by checking its version
+    this.cliVersion = getCliVersion(resolved, ["--version"]);
     return this.cliVersion !== null;
   }
 
@@ -326,17 +326,57 @@ class CodexProvider implements Provider {
     return new Promise((resolve, reject) => {
       this.process = spawn(
         this.resolvedPath!,
-        ["--model", cliModel, "--quiet", message],
+        [
+          "exec",
+          "--model",
+          cliModel,
+          "--dangerously-bypass-approvals-and-sandbox",
+          "--skip-git-repo-check",
+          "--json",
+          message,
+        ],
         { env: augmentedEnv }
       );
 
+      let buffer = "";
+      let doneSent = false;
+
       this.process.stdout?.on("data", (data: Buffer) => {
-        const text = data.toString();
-        onEvent({
-          kind: "agent:chunk",
-          payload: { text },
-          timestamp: Date.now(),
-        });
+        buffer += data.toString();
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const parsed = JSON.parse(line);
+            // Handle JSONL events from `codex exec --json`
+            if (parsed.type === "item.completed" && parsed.item?.text) {
+              onEvent({
+                kind: "agent:chunk",
+                payload: { text: parsed.item.text },
+                timestamp: Date.now(),
+              });
+            } else if (parsed.type === "item.streaming_delta" && parsed.delta) {
+              onEvent({
+                kind: "agent:chunk",
+                payload: { text: parsed.delta },
+                timestamp: Date.now(),
+              });
+            } else if (parsed.type === "turn.completed") {
+              if (!doneSent) {
+                doneSent = true;
+                onEvent({
+                  kind: "agent:done",
+                  payload: {},
+                  timestamp: Date.now(),
+                });
+              }
+            }
+          } catch {
+            // Partial JSON line — accumulate
+          }
+        }
       });
 
       this.process.stderr?.on("data", (data: Buffer) => {
@@ -354,11 +394,37 @@ class CodexProvider implements Provider {
       });
 
       this.process.on("close", (code) => {
-        onEvent({
-          kind: "agent:done",
-          payload: {},
-          timestamp: Date.now(),
-        });
+        // Flush remaining buffer
+        if (buffer.trim()) {
+          try {
+            const parsed = JSON.parse(buffer);
+            if (parsed.type === "item.completed" && parsed.item?.text) {
+              onEvent({
+                kind: "agent:chunk",
+                payload: { text: parsed.item.text },
+                timestamp: Date.now(),
+              });
+            }
+          } catch {
+            if (buffer.trim().length > 0) {
+              onEvent({
+                kind: "agent:chunk",
+                payload: { text: buffer.trim() },
+                timestamp: Date.now(),
+              });
+            }
+          }
+        }
+
+        if (!doneSent) {
+          doneSent = true;
+          onEvent({
+            kind: "agent:done",
+            payload: {},
+            timestamp: Date.now(),
+          });
+        }
+
         this.process = null;
         if (code !== 0 && code !== null) {
           reject(new Error(`Codex CLI exited with code ${code}`));
