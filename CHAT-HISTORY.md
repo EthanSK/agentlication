@@ -42,3 +42,7 @@ Extended brainstorming session defining the full architecture:
 - **Per-app harness.md**: Each Companion Agent gets a harness file with app-specific instructions and accumulated learnings.
 - **ElevenLabs for speech output**: Added to voice capabilities alongside Deepgram for input.
 - **Producer Player as test target**: Using Ethan's own app for development testing.
+
+## 2026-03-25 — Fix Codex Duplicate Response Bug
+
+Fixed a bug where Codex responses appeared twice in the chat. The Codex JSONL stream emits both `item.streaming_delta` events (incremental text chunks) and a final `item.completed` event (full text). Both were being forwarded as `agent:chunk` events to the renderer, causing the entire response to be duplicated. Added a `hasStreamedDeltas` flag in `CodexProvider.send()` to skip the redundant `item.completed` payload when streaming deltas have already been received. Also applied the same guard to the buffer-flush logic in the process close handler.
