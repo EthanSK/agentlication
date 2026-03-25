@@ -1,0 +1,25 @@
+{
+  "name": "agentlication",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI agent overlay for any Electron app via CDP",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run build:contracts && concurrently -n renderer,electron \"npm run dev:renderer\" \"npm run dev:electron\"",
+    "dev:renderer": "npm run -w apps/renderer dev",
+    "dev:electron": "npm run -w apps/electron dev",
+    "build": "npm run build:contracts && npm run build:renderer && npm run build:electron",
+    "build:contracts": "npm run -w packages/contracts build",
+    "build:renderer": "npm run -w apps/renderer build",
+    "build:electron": "npm run -w apps/electron build",
+    "package": "npm run build && npm run -w apps/electron package"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.7.3",
+    "wait-on": "^9.0.4"
+  }
+}

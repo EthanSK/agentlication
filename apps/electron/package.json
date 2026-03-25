@@ -1,0 +1,41 @@
+{
+  "name": "@agentlication/electron",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/main.js",
+  "scripts": {
+    "dev": "tsc && wait-on http://localhost:5173 && electron .",
+    "build": "tsc",
+    "package": "electron-builder --mac"
+  },
+  "dependencies": {
+    "@agentlication/contracts": "*",
+    "chrome-remote-interface": "^0.33.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.9",
+    "electron": "^34.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "ai.agentlication.app",
+    "productName": "Agentlication",
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.developer-tools"
+    },
+    "files": [
+      "dist/**/*",
+      "!node_modules"
+    ],
+    "directories": {
+      "output": "../../out"
+    },
+    "extraResources": [
+      {
+        "from": "../renderer/dist",
+        "to": "renderer"
+      }
+    ]
+  }
+}
