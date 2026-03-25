@@ -1,14 +1,65 @@
 import * as fs from "fs";
 import * as path from "path";
-import { spawn } from "child_process";
+import { spawn, execFileSync } from "child_process";
 import type { TargetApp } from "@agentlication/contracts";
 
 const APPLICATIONS_DIR = "/Applications";
+const ICONS_DIR = "/tmp/agentlication-icons";
 const ELECTRON_INDICATORS = [
   "Electron Framework.framework",
   "Electron",
   "electron.asar",
 ];
+
+// Ensure temp icon directory exists
+try {
+  fs.mkdirSync(ICONS_DIR, { recursive: true });
+} catch {
+  // ignore
+}
+
+/**
+ * Extract the app icon as a base64 data URL.
+ * Uses Info.plist to find the icon file, then sips to convert .icns to PNG.
+ */
+function extractAppIcon(appPath: string, appName: string): string | undefined {
+  try {
+    // Read CFBundleIconFile from Info.plist
+    const plistPath = path.join(appPath, "Contents", "Info");
+    const iconFileName = execFileSync(
+      "defaults",
+      ["read", plistPath, "CFBundleIconFile"],
+      { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }
+    ).trim();
+
+    if (!iconFileName) return undefined;
+
+    // Add .icns extension if not present
+    const icnsName = iconFileName.endsWith(".icns")
+      ? iconFileName
+      : `${iconFileName}.icns`;
+    const icnsPath = path.join(appPath, "Contents", "Resources", icnsName);
+
+    if (!fs.existsSync(icnsPath)) return undefined;
+
+    // Convert to PNG using sips
+    const safeName = appName.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const pngPath = path.join(ICONS_DIR, `${safeName}.png`);
+
+    execFileSync(
+      "sips",
+      ["-s", "format", "png", "-z", "64", "64", icnsPath, "--out", pngPath],
+      { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }
+    );
+
+    if (!fs.existsSync(pngPath)) return undefined;
+
+    const pngBuffer = fs.readFileSync(pngPath);
+    return `data:image/png;base64,${pngBuffer.toString("base64")}`;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Scan /Applications for Electron apps by checking for Electron framework files.
@@ -27,9 +78,11 @@ export function scanElectronApps(): TargetApp[] {
       const isElectron = checkIfElectron(appPath);
 
       if (isElectron) {
+        const icon = extractAppIcon(appPath, appName);
         apps.push({
           name: appName,
           path: appPath,
+          icon,
           isElectron: true,
         });
       }
