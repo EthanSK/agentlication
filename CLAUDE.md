@@ -1,1 +1,1 @@
-IDEAS.md
+AGENTS.md
