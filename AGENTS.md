@@ -6,6 +6,8 @@
 - Append conversation summary to CHAT-HISTORY.md (strip sensitive info: passwords, API keys, tokens, personal addresses)
 - Always push after committing
 - After every UI change, send a screenshot of just the app window (not full screen) to Ethan via Telegram
+- NEVER use Playwright browser view for screenshots — always use native macOS screencapture on the actual Electron window
+- The app should always be tested and screenshotted as a real Electron app, not via localhost in a browser
 
 ## Project Info
 - Repo: https://github.com/EthanSK/agentlication
