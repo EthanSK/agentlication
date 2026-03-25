@@ -340,6 +340,7 @@ class CodexProvider implements Provider {
 
       let buffer = "";
       let doneSent = false;
+      let hasStreamedDeltas = false;
 
       this.process.stdout?.on("data", (data: Buffer) => {
         buffer += data.toString();
@@ -351,13 +352,19 @@ class CodexProvider implements Provider {
           try {
             const parsed = JSON.parse(line);
             // Handle JSONL events from `codex exec --json`
+            // Skip item.completed when we already streamed deltas — the
+            // completed event contains the same full text that was already
+            // sent incrementally via streaming_delta events.
             if (parsed.type === "item.completed" && parsed.item?.text) {
-              onEvent({
-                kind: "agent:chunk",
-                payload: { text: parsed.item.text },
-                timestamp: Date.now(),
-              });
+              if (!hasStreamedDeltas) {
+                onEvent({
+                  kind: "agent:chunk",
+                  payload: { text: parsed.item.text },
+                  timestamp: Date.now(),
+                });
+              }
             } else if (parsed.type === "item.streaming_delta" && parsed.delta) {
+              hasStreamedDeltas = true;
               onEvent({
                 kind: "agent:chunk",
                 payload: { text: parsed.delta },
@@ -398,7 +405,7 @@ class CodexProvider implements Provider {
         if (buffer.trim()) {
           try {
             const parsed = JSON.parse(buffer);
-            if (parsed.type === "item.completed" && parsed.item?.text) {
+            if (parsed.type === "item.completed" && parsed.item?.text && !hasStreamedDeltas) {
               onEvent({
                 kind: "agent:chunk",
                 payload: { text: parsed.item.text },
@@ -406,7 +413,7 @@ class CodexProvider implements Provider {
               });
             }
           } catch {
-            if (buffer.trim().length > 0) {
+            if (buffer.trim().length > 0 && !hasStreamedDeltas) {
               onEvent({
                 kind: "agent:chunk",
                 payload: { text: buffer.trim() },
