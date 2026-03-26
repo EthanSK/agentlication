@@ -57,3 +57,7 @@ Renamed all instances of "agentify"/"Agentify"/"agentified"/"Agentified"/"agenti
 - **Prompt files**: Trigger value `on-agentify` -> `on-agentlicate` in frontmatter and documentation
 - **Documentation**: IDEAS.md, AGENTS.md, CHAT-HISTORY.md updated with new terminology
 - Did NOT change: app name "Agentlication", domain "agentlication.ai", package/repo names
+
+## 2026-03-26 — Fix Stale Build Artifacts After Rename
+
+Fixed `TypeError: window.agentlication.isAppAgentlicated is not a function` caused by stale compiled JavaScript in `apps/electron/dist/`. The previous rename commit updated all TypeScript source files but did not rebuild the electron dist. Since Electron loads the compiled `dist/preload.js` (not the `.ts` source), the runtime was still exposing the old `isAppAgentified` method name while the renderer was calling the new `isAppAgentlicated`. Fix: rebuilt electron TypeScript (`npm run build:electron`) to regenerate dist files with the correct names.
