@@ -4,7 +4,7 @@ description: <one-line summary of what this prompt does>
 provider: claude | codex | any
 model: small | medium | large
 thinking: low | medium | high
-trigger: manual | on-scan | on-agentify | periodic | on-install
+trigger: manual | on-scan | on-agentlicate | periodic | on-install
 timeout: 120
 ---
 

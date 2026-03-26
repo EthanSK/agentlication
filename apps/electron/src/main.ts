@@ -72,8 +72,8 @@ function registerIpcHandlers() {
     return scanElectronApps();
   });
 
-  // Check if an app has been agentified (has a per-app profile)
-  ipcMain.handle(IPC.APP_IS_AGENTIFIED, async (_event, appName: string) => {
+  // Check if an app has been agentlicated (has a per-app profile)
+  ipcMain.handle(IPC.APP_IS_AGENTLICATED, async (_event, appName: string) => {
     const profileDir = path.join(os.homedir(), ".agentlication", "apps", appName);
     try {
       const stat = fs.statSync(profileDir);

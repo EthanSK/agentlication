@@ -4,7 +4,7 @@ description: Given a desktop app name, search GitHub for its open-source reposit
 provider: any
 model: medium
 thinking: medium
-trigger: on-agentify
+trigger: on-agentlicate
 timeout: 90
 ---
 
@@ -13,7 +13,7 @@ timeout: 90
 ## Context
 
 The agent receives the name (and optionally the bundle identifier) of a desktop
-application that the user wants to agentify. The goal is to find the app's
+application that the user wants to agentlicate. The goal is to find the app's
 open-source repository on GitHub so the agent can study its DOM structure, IPC
 channels, or extension points.
 

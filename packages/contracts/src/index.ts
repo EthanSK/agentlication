@@ -133,7 +133,7 @@ export const IPC = {
   // App picker
   SCAN_APPS: "app:scan",
   LAUNCH_APP: "app:launch",
-  APP_IS_AGENTIFIED: "app:is-agentified",
+  APP_IS_AGENTLICATED: "app:is-agentlicated",
 
   // CDP
   CDP_CONNECT: "cdp:connect",

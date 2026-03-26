@@ -14,7 +14,7 @@ timeout: 120
 
 The agent runs on the user's local machine and has filesystem access. The goal is
 to discover all installed Electron-based desktop apps so the user can choose which
-ones to agentify.
+ones to agentlicate.
 
 ## Instructions
 

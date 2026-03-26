@@ -8,7 +8,7 @@ import type {
 interface AgentlicationAPI {
   scanApps: () => Promise<TargetApp[]>;
   launchApp: (appPath: string) => Promise<{ success: boolean; port: number; error?: string }>;
-  isAppAgentified: (appName: string) => Promise<boolean>;
+  isAppAgentlicated: (appName: string) => Promise<boolean>;
   cdpConnect: (port: number) => Promise<{ success: boolean; error?: string }>;
   cdpGetDOM: () => Promise<string>;
   cdpEvaluate: (js: string) => Promise<unknown>;

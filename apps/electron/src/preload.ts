@@ -6,7 +6,7 @@ import { contextBridge, ipcRenderer } from "electron";
 const IPC = {
   SCAN_APPS: "app:scan",
   LAUNCH_APP: "app:launch",
-  APP_IS_AGENTIFIED: "app:is-agentified",
+  APP_IS_AGENTLICATED: "app:is-agentlicated",
   CDP_CONNECT: "cdp:connect",
   CDP_GET_DOM: "cdp:get-dom",
   CDP_EVALUATE: "cdp:evaluate",
@@ -23,7 +23,7 @@ contextBridge.exposeInMainWorld("agentlication", {
   // App picker
   scanApps: () => ipcRenderer.invoke(IPC.SCAN_APPS),
   launchApp: (appPath: string) => ipcRenderer.invoke(IPC.LAUNCH_APP, appPath),
-  isAppAgentified: (appName: string) => ipcRenderer.invoke(IPC.APP_IS_AGENTIFIED, appName),
+  isAppAgentlicated: (appName: string) => ipcRenderer.invoke(IPC.APP_IS_AGENTLICATED, appName),
 
   // CDP
   cdpConnect: (port: number) => ipcRenderer.invoke(IPC.CDP_CONNECT, port),

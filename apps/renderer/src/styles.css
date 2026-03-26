@@ -250,7 +250,7 @@ body {
   white-space: nowrap;
 }
 
-.agentify-btn {
+.agentlicate-btn {
   padding: 8px 18px;
   background: var(--accent);
   color: white;
@@ -263,16 +263,16 @@ body {
   white-space: nowrap;
 }
 
-.agentify-btn:hover:not(:disabled) {
+.agentlicate-btn:hover:not(:disabled) {
   background: var(--accent-hover);
 }
 
-.agentify-btn:disabled {
+.agentlicate-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.agentified-badge {
+.agentlicated-badge {
   display: inline-flex;
   align-items: center;
   padding: 3px 10px;

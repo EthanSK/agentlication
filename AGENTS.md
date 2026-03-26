@@ -112,7 +112,7 @@ description: <what it does>    # one-line summary
 provider: claude | codex | any # which AI provider(s) can run this
 model: small | medium | large  # model size class needed
 thinking: low | medium | high  # extended thinking budget
-trigger: manual | on-scan | on-agentify | periodic | on-install
+trigger: manual | on-scan | on-agentlicate | periodic | on-install
 timeout: <seconds>             # max execution time
 ---
 ```
@@ -132,7 +132,7 @@ See `prompts/TEMPLATE.md` for the canonical template. Copy it when creating new 
 | File | Trigger | Description |
 |------|---------|-------------|
 | `check-latest-models.md` | periodic | Query provider CLIs/APIs for available models |
-| `find-source-repo.md` | on-agentify | Search GitHub for an app's open-source repo |
+| `find-source-repo.md` | on-agentlicate | Search GitHub for an app's open-source repo |
 | `scan-electron-apps.md` | on-scan | Discover installed Electron apps and their metadata |
 
 ### Execution
@@ -146,7 +146,7 @@ Prompts are executed by the Agentlication runtime. The runtime:
 The `trigger` field determines when a prompt runs:
 - `manual` — user explicitly invokes it
 - `on-scan` — runs during system scanning
-- `on-agentify` — runs when the user agentifies an app
+- `on-agentlicate` — runs when the user agentlicates an app
 - `periodic` — runs on a schedule (e.g. model registry refresh)
 - `on-install` — runs once when Agentlication is first set up
 

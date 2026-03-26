@@ -15,7 +15,7 @@ export default function AppPicker({
   const [customPath, setCustomPath] = useState("");
   const [launching, setLaunching] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [agentifiedApps, setAgentifiedApps] = useState<Set<string>>(new Set());
+  const [agentlicatedApps, setAgentlicatedApps] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     loadApps();
@@ -38,16 +38,16 @@ export default function AppPicker({
       setApps(scanned);
       onAppsLoaded?.(scanned);
 
-      // Check which apps are already agentified
+      // Check which apps are already agentlicated
       if (window.agentlication) {
         const tracked = new Set<string>();
         await Promise.all(
           scanned.map(async (app) => {
-            const isTracked = await window.agentlication.isAppAgentified(app.name);
+            const isTracked = await window.agentlication.isAppAgentlicated(app.name);
             if (isTracked) tracked.add(app.name);
           })
         );
-        setAgentifiedApps(tracked);
+        setAgentlicatedApps(tracked);
       }
     } catch (err) {
       setError(String(err));
@@ -56,7 +56,7 @@ export default function AppPicker({
     }
   };
 
-  const handleAgentify = async (app: TargetApp) => {
+  const handleAgentlicate = async (app: TargetApp) => {
     setLaunching(app.path);
     setError(null);
 
@@ -89,14 +89,14 @@ export default function AppPicker({
   const handleCustomPath = () => {
     if (!customPath.trim()) return;
     const name = customPath.split("/").pop()?.replace(".app", "") || "Custom App";
-    handleAgentify({ name, path: customPath.trim(), isElectron: true });
+    handleAgentlicate({ name, path: customPath.trim(), isElectron: true });
   };
 
   return (
     <div className="app-picker">
       <div className="picker-header">
         <h1>Agentlication</h1>
-        <p className="subtitle">Select an Electron app to agentify</p>
+        <p className="subtitle">Select an Electron app to agentlicate</p>
       </div>
 
       {/* Custom path input */}
@@ -109,7 +109,7 @@ export default function AppPicker({
           onKeyDown={(e) => e.key === "Enter" && handleCustomPath()}
         />
         <button onClick={handleCustomPath} disabled={!customPath.trim()}>
-          Agentify
+          Agentlicate
         </button>
       </div>
 
@@ -137,19 +137,19 @@ export default function AppPicker({
                 <span className="app-name">{app.name}</span>
                 <span className="app-path">{app.path}</span>
               </div>
-              {agentifiedApps.has(app.name) && (
-                <span className="agentified-badge">Agentified</span>
+              {agentlicatedApps.has(app.name) && (
+                <span className="agentlicated-badge">Agentlicated</span>
               )}
               <button
-                className="agentify-btn"
-                onClick={() => handleAgentify(app)}
+                className="agentlicate-btn"
+                onClick={() => handleAgentlicate(app)}
                 disabled={launching === app.path}
               >
                 {launching === app.path
                   ? "Launching..."
-                  : agentifiedApps.has(app.name)
+                  : agentlicatedApps.has(app.name)
                     ? "Reconnect"
-                    : "Agentify"}
+                    : "Agentlicate"}
               </button>
             </div>
           ))

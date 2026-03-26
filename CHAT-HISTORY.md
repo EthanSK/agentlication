@@ -7,7 +7,7 @@ Scaffolded the full Electron + React + Vite + TypeScript monorepo structure:
 - **Root**: npm workspaces with `apps/electron`, `apps/renderer`, `packages/contracts`
 - **packages/contracts**: Shared types — `ProviderKind`, `AgentEvent`, `ChatMessage`, `TargetApp`, `CdpTarget`, IPC channel constants, model definitions
 - **apps/electron**: Main process with `main.ts` (window management, IPC handlers), `agent-service.ts` (Claude/Codex provider abstraction via CLI spawning), `cdp-service.ts` (Chrome DevTools Protocol connection using chrome-remote-interface), `app-scanner.ts` (scans /Applications for Electron apps), `preload.ts` (contextBridge API)
-- **apps/renderer**: React app with Vite — `AppPicker` (lists detected Electron apps, custom path input, Agentify button), `ChatPanel` (message timeline with streaming), `ChatComposer` (textarea with Enter to send, Shift+Enter newline), `ModelPicker` (Claude Sonnet/Opus, Codex GPT-5.4), `DomViewer` (optional DOM snapshot viewer), dark theme CSS
+- **apps/renderer**: React app with Vite — `AppPicker` (lists detected Electron apps, custom path input, Agentlicate button), `ChatPanel` (message timeline with streaming), `ChatComposer` (textarea with Enter to send, Shift+Enter newline), `ModelPicker` (Claude Sonnet/Opus, Codex GPT-5.4), `DomViewer` (optional DOM snapshot viewer), dark theme CSS
 - Dev mode works: `npm run dev` starts Vite + Electron concurrently with wait-on
 - All three packages compile clean: contracts, renderer (Vite build), electron (tsc)
 
@@ -31,8 +31,8 @@ Enhanced the app with working model picker, real CLI integration, and Hub chat:
 Extended brainstorming session defining the full architecture:
 
 - **Terminology established**: Hub, Companion, Target App, App Profile, Source Mirror, Patches, Harness, Setup Agent, Companion Agent. Each term has a precise meaning in the Agentlication system.
-- **App Profile structure**: Each agentified app gets `~/.agentlication/apps/{app-name}/` with `profile.json`, `source/` (mirror), `patches/`, and `harness.md`.
-- **Source Mirror concept**: When agentifying, Agentlication checks for an open-source repo online, clones it version-matched to the installed binary. Gives the agent full source context without modifying the installed app.
+- **App Profile structure**: Each agentlicated app gets `~/.agentlication/apps/{app-name}/` with `profile.json`, `source/` (mirror), `patches/`, and `harness.md`.
+- **Source Mirror concept**: When agentlicating, Agentlication checks for an open-source repo online, clones it version-matched to the installed binary. Gives the agent full source context without modifying the installed app.
 - **Runtime patches (Greasemonkey model)**: Key decision — patches are injected at runtime via CDP, NOT applied as source code diffs. This means Agentlication works on closed-source apps too. Patch files have metadata headers (target app, version, author, description).
 - **Hybrid patch format**: Raw JS by default for simplicity. Optional TSX with esbuild compile step for complex UI patches. Can piggyback on the target app's React instance if present.
 - **User patch backup**: Patches automatically backed up to a private Git repo.
@@ -46,3 +46,14 @@ Extended brainstorming session defining the full architecture:
 ## 2026-03-25 — Fix Codex Duplicate Response Bug
 
 Fixed a bug where Codex responses appeared twice in the chat. The Codex JSONL stream emits both `item.streaming_delta` events (incremental text chunks) and a final `item.completed` event (full text). Both were being forwarded as `agent:chunk` events to the renderer, causing the entire response to be duplicated. Added a `hasStreamedDeltas` flag in `CodexProvider.send()` to skip the redundant `item.completed` payload when streaming deltas have already been received. Also applied the same guard to the buffer-flush logic in the process close handler.
+
+## 2026-03-26 — Rename "agentify" to "agentlicate" Throughout Codebase
+
+Renamed all instances of "agentify"/"Agentify"/"agentified"/"Agentified"/"agentifying" to "agentlicate"/"Agentlicate"/"agentlicated"/"Agentlicated"/"agentlicating" across the entire codebase to align terminology with the "Agentlication" brand name. Changes spanned:
+
+- **UI text**: Button labels ("Agentlicate"), subtitle ("Select an Electron app to agentlicate"), badge text ("Agentlicated")
+- **Code**: Variable names (`agentlicatedApps`), function names (`handleAgentlicate`), API methods (`isAppAgentlicated`), CSS class names (`.agentlicate-btn`, `.agentlicated-badge`)
+- **IPC channels**: `app:is-agentified` -> `app:is-agentlicated`, constant name `APP_IS_AGENTIFIED` -> `APP_IS_AGENTLICATED` (in contracts, preload, and main)
+- **Prompt files**: Trigger value `on-agentify` -> `on-agentlicate` in frontmatter and documentation
+- **Documentation**: IDEAS.md, AGENTS.md, CHAT-HISTORY.md updated with new terminology
+- Did NOT change: app name "Agentlication", domain "agentlication.ai", package/repo names

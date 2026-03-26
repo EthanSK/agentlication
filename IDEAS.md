@@ -9,9 +9,9 @@
 
 ## Terminology
 
-- **Hub** — the main Agentlication window; lists installed apps, lets you agentify them, has its own Setup Agent chat
+- **Hub** — the main Agentlication window; lists installed apps, lets you agentlicate them, has its own Setup Agent chat
 - **Companion** — the AI agent instance attached to a target app (each app gets its own Companion Agent)
-- **Target App** — the Electron app being agentified
+- **Target App** — the Electron app being agentlicated
 - **App Profile** — per-app config + source + patches stored at `~/.agentlication/apps/{app-name}/`
 - **Source Mirror** — local clone of the target app's open-source repo, version-matched to the installed binary
 - **Patches** — runtime JS/TSX snippets injected via CDP (not source code diffs); Greasemonkey-style
@@ -42,9 +42,9 @@
 
 ### Source Mirror
 
-- Auto-pulled when agentifying an app for the first time
+- Auto-pulled when agentlicating an app for the first time
 - Version-matched to the installed app binary (e.g., Slack 4.38 -> git tag v4.38)
-- Agentify button checks for open-source repo online before cloning
+- Agentlicate button checks for open-source repo online before cloning
 - Gives the Companion Agent full source context without modifying the installed app
 - Updated on app version change
 
@@ -97,7 +97,7 @@
 
 ## Product
 
-- Marketplace of pre-made agentic apps OR paste-a-URL to agentify
+- Marketplace of pre-made agentic apps OR paste-a-URL to agentlicate
 - Voting page for app requests
 - GitHub org to host all forked apps
 - Direct download links for pre-built agentic versions
@@ -133,7 +133,7 @@
 
 ## Technical Details
 
-- `npx agentlication --app "Slack"` to agentify any app
+- `npx agentlication --app "Slack"` to agentlicate any app
 - Relaunches app with `--remote-debugging-port`, connects via CDP
 - For non-Electron: convert to Electron (agent-assisted) or use accessibility API
 - Lightweight app pulls latest code, saves locally, applies custom UIs from branches, merges using agent
@@ -141,7 +141,7 @@
 ## Open Questions
 
 - Local installer vs cloud build queue?
-- Expose pipeline to users (agentify-anything) or keep as internal factory?
+- Expose pipeline to users (agentlicate-anything) or keep as internal factory?
 - How to handle merge conflicts when source repos update?
 - Should custom UIs be in branches or worktrees?
 - Dev server shipping — is it possible to ship an Electron app that runs `npm run dev`?
