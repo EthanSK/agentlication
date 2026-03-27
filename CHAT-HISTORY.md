@@ -153,3 +153,17 @@ Renamed all filename references from `harness.md` to `HARNESS.md` (uppercase) fo
 - **Documentation**: Updated all filename references in IDEAS.md (terminology section, directory tree) and CHAT-HISTORY.md (5 occurrences across architecture, profile creation, and next-steps sections)
 - **No changes to prose**: The concept name "harness" in descriptive text was left as-is; only the literal filename was uppercased
 - Verified both `npm run build:contracts` and `npm run build:electron` pass cleanly
+
+## 2026-03-26 — Companion Model Picker and Per-App Preferences
+
+Added a model picker and thinking mode selector to the Companion Agent window, with per-app persistence:
+
+- **ModelPicker in Companion**: Reused the existing `ModelPicker` component from the hub header bar. Added it to the companion window's custom titlebar between the app name and close button. Compact styling for the 400px companion width (smaller fonts, icons, padding).
+- **Per-app preferences**: Each companion panel has its own model and thinking level settings, persisted to the app's `profile.json`:
+  - Added `preferredModel` and `thinkingLevel` optional fields to the `AppProfile` interface in contracts
+  - New IPC channels: `APP_UPDATE_PREFERENCES` (save model/thinking to profile.json) and `APP_GET_PREFERENCES` (load from profile.json)
+  - Preload bridge exposes `updateAppPreferences(appName, prefs)` and `getAppPreferences(appName)` methods
+  - Main process handlers read/write the fields in the app's profile.json file
+- **Companion state management**: Companion mode in App.tsx uses separate `companionModel` and `companionThinking` state variables (independent from hub state). On mount, loads persisted preferences from profile.json. On change, persists immediately.
+- **UI layout**: Companion titlebar shows `[App Name] [Model Picker] [Dot] [Thinking Picker] [Close]`. New `.companion-titlebar-controls` container with no-drag region. Model picker dropdown appears correctly over the companion content.
+- **Persistence verified**: Changed model to Sonnet 4.5/Medium via IPC, closed companion, reopened — correctly loaded the saved preferences from profile.json
