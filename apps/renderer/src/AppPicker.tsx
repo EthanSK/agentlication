@@ -89,6 +89,14 @@ export default function AppPicker({
         profile = profileResult.profile;
         // Mark as agentlicated
         setAgentlicatedApps((prev) => new Set(prev).add(app.name));
+
+        // Step 1b: Non-blocking source repo discovery and clone
+        // This runs in background while CDP connection proceeds
+        if (profile && !profile.sourceRepoUrl) {
+          findAndCloneSourceRepo(app.name, profile.bundleId).catch(() => {
+            // Source repo discovery is best-effort, don't block agentlication
+          });
+        }
       } catch (err) {
         setError(String(err));
         setCreatingProfile(null);
@@ -145,6 +153,26 @@ export default function AppPicker({
       setError(String(err));
     } finally {
       setLaunching(null);
+    }
+  };
+
+  /**
+   * Non-blocking: search GitHub for the app's source repo and clone it.
+   * Runs in background after profile creation so it doesn't block CDP connection.
+   */
+  const findAndCloneSourceRepo = async (appName: string, bundleId?: string) => {
+    if (!window.agentlication?.findSourceRepo) return;
+
+    try {
+      const findResult = await window.agentlication.findSourceRepo(appName, bundleId);
+      if (!findResult.success || !findResult.repo) return;
+
+      // Clone the discovered repo
+      if (window.agentlication.cloneSource) {
+        await window.agentlication.cloneSource(appName, findResult.repo.repoUrl);
+      }
+    } catch {
+      // Source repo operations are best-effort
     }
   };
 

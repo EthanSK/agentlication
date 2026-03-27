@@ -5,6 +5,9 @@ import type {
   AgentEvent,
   AppProfile,
   ProviderStatusMap,
+  StatusMessage,
+  SourceRepoFindResult,
+  SourceCloneResult,
 } from "@agentlication/contracts";
 
 interface AgentlicationAPI {
@@ -28,6 +31,9 @@ interface AgentlicationAPI {
   getAppPreferences: (appName: string) => Promise<{ preferredModel?: string; thinkingLevel?: string } | null>;
   openCompanion: (appName: string) => Promise<void>;
   closeCompanion: () => Promise<void>;
+  findSourceRepo: (appName: string, bundleId?: string) => Promise<SourceRepoFindResult>;
+  cloneSource: (appName: string, repoUrl: string) => Promise<SourceCloneResult>;
+  onStatusMessage: (callback: (msg: StatusMessage) => void) => () => void;
 }
 
 declare global {

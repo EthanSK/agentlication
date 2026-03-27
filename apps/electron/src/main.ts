@@ -4,10 +4,11 @@ import * as fs from "fs";
 import * as os from "os";
 import { execFileSync, execSync } from "child_process";
 import { IPC } from "@agentlication/contracts";
-import type { AppProfile, TargetApp, CdpPageInfo } from "@agentlication/contracts";
+import type { AppProfile, TargetApp, CdpPageInfo, StatusMessage, SourceRepoFindResult, SourceCloneResult } from "@agentlication/contracts";
 import { AgentService } from "./agent-service";
 import { CdpService } from "./cdp-service";
 import { scanElectronApps, launchAppWithDebugging } from "./app-scanner";
+import { findSourceRepo, cloneSourceRepo } from "./source-repo-service";
 
 let mainWindow: BrowserWindow | null = null;
 let companionWindow: BrowserWindow | null = null;
@@ -127,6 +128,23 @@ function nextCdpPort(): number {
   }
 }
 
+let statusIdCounter = 0;
+
+/** Emit a status message to the companion window (and main window). */
+function emitStatus(text: string, level: "info" | "success" | "error" | "progress") {
+  const msg: StatusMessage = {
+    id: `status-${++statusIdCounter}-${Date.now()}`,
+    text,
+    level,
+    timestamp: Date.now(),
+  };
+
+  mainWindow?.webContents.send(IPC.COMPANION_STATUS, msg);
+  if (companionWindow && !companionWindow.isDestroyed()) {
+    companionWindow.webContents.send(IPC.COMPANION_STATUS, msg);
+  }
+}
+
 // ── IPC Handlers ───────────────────────────────────────────────
 
 function registerIpcHandlers() {
@@ -160,6 +178,8 @@ function registerIpcHandlers() {
           const existing = JSON.parse(fs.readFileSync(profileFile, "utf-8")) as AppProfile;
           return { success: true, profile: existing };
         }
+
+        emitStatus(`Creating app profile for ${appData.name}...`, "progress");
 
         // Create directory structure
         fs.mkdirSync(profileDir, { recursive: true });
@@ -202,8 +222,10 @@ ${appData.name} is an Electron application located at ${appData.path}.
 `;
         fs.writeFileSync(path.join(profileDir, "HARNESS.md"), harnessContent, "utf-8");
 
+        emitStatus(`App profile created for ${appData.name}`, "success");
         return { success: true, profile };
       } catch (err) {
+        emitStatus(`Failed to create profile: ${String(err)}`, "error");
         return { success: false, error: String(err) };
       }
     }
@@ -232,9 +254,10 @@ ${appData.name} is an Electron application located at ${appData.path}.
   ipcMain.handle(
     IPC.CDP_CONNECT,
     async (_event, appPath: string, cdpPort: number) => {
+      const appName = appPath.split("/").pop()?.replace(".app", "") || "the app";
+
       // If the target app is already running, ask the user to confirm restart
       if (isAppRunning(appPath)) {
-        const appName = appPath.split("/").pop()?.replace(".app", "") || "the app";
         const { response } = await dialog.showMessageBox(mainWindow!, {
           type: "question",
           buttons: ["Quit & Restart", "Cancel"],
@@ -244,10 +267,17 @@ ${appData.name} is an Electron application located at ${appData.path}.
           message: `Do you want to quit and restart ${appName}? It will be relaunched with CDP enabled.`,
         });
         if (response === 1) {
+          emitStatus("User cancelled restart", "error");
           return { success: false, error: "User cancelled restart" };
         }
       }
-      return cdpService.connect(appPath, cdpPort);
+
+      // Pass the emitStatus callback to cdpService so it reports each step
+      const result = await cdpService.connect(appPath, cdpPort, (text, level) => {
+        emitStatus(text, level);
+      });
+
+      return result;
     }
   );
 
@@ -271,8 +301,17 @@ ${appData.name} is an Electron application located at ${appData.path}.
   ipcMain.handle(IPC.CDP_GET_INFO, async (): Promise<CdpPageInfo | null> => {
     if (!cdpService.isConnected()) return null;
     try {
-      return await cdpService.getPageInfo();
-    } catch {
+      emitStatus("Reading page info...", "progress");
+      const info = await cdpService.getPageInfo();
+      if (info.framework) {
+        emitStatus(`Detected framework: ${info.framework}`, "info");
+      } else {
+        emitStatus("No framework detected", "info");
+      }
+      emitStatus("Agentlication complete", "success");
+      return info;
+    } catch (err) {
+      emitStatus(`Failed to read page info: ${String(err)}`, "error");
       return null;
     }
   });
@@ -355,6 +394,80 @@ ${appData.name} is an Electron application located at ${appData.path}.
       } catch {
         return null;
       }
+    }
+  );
+
+  // ── Source repo handlers ───────────────────────────────────────
+  ipcMain.handle(
+    IPC.APP_FIND_SOURCE_REPO,
+    async (_event, appName: string, bundleId?: string): Promise<SourceRepoFindResult> => {
+      emitStatus(`Searching GitHub for ${appName} source repo...`, "progress");
+      const result = await findSourceRepo(appName, bundleId);
+      if (result.success && result.repo) {
+        emitStatus(
+          `Found source repo: ${result.repo.fullName} (${result.repo.confidence} confidence, ${result.repo.stars} stars)`,
+          "success"
+        );
+
+        // Update the profile with the repo URL
+        try {
+          const slug = slugify(appName);
+          const profileFile = path.join(PROFILE_ROOT, slug, "profile.json");
+          if (fs.existsSync(profileFile)) {
+            const profile = JSON.parse(fs.readFileSync(profileFile, "utf-8")) as AppProfile;
+            profile.sourceRepoUrl = result.repo.repoUrl;
+            profile.sourceCloneStatus = "searching";
+            fs.writeFileSync(profileFile, JSON.stringify(profile, null, 2), "utf-8");
+          }
+        } catch {
+          // Non-critical — profile update failed but search result is still valid
+        }
+      } else if (result.error) {
+        emitStatus(`Source repo search: ${result.error}`, "info");
+      }
+      return result;
+    }
+  );
+
+  ipcMain.handle(
+    IPC.APP_CLONE_SOURCE,
+    async (_event, appName: string, repoUrl: string): Promise<SourceCloneResult> => {
+      emitStatus(`Cloning ${repoUrl}...`, "progress");
+
+      // Get the profile
+      const slug = slugify(appName);
+      const profileFile = path.join(PROFILE_ROOT, slug, "profile.json");
+      if (!fs.existsSync(profileFile)) {
+        emitStatus("Cannot clone: app profile not found", "error");
+        return { success: false, error: "App profile not found" };
+      }
+
+      const profile = JSON.parse(fs.readFileSync(profileFile, "utf-8")) as AppProfile;
+
+      // Update status to cloning
+      profile.sourceCloneStatus = "cloning";
+      fs.writeFileSync(profileFile, JSON.stringify(profile, null, 2), "utf-8");
+
+      const result = await cloneSourceRepo(profile, repoUrl, PROFILE_ROOT);
+
+      if (result.success) {
+        // Update profile with final status
+        profile.sourceRepoUrl = repoUrl;
+        profile.sourceCloneStatus = "done";
+        fs.writeFileSync(profileFile, JSON.stringify(profile, null, 2), "utf-8");
+
+        let msg = `Source cloned to ${result.clonedTo}`;
+        if (result.checkedOutVersion) {
+          msg += ` (checked out ${result.checkedOutVersion})`;
+        }
+        emitStatus(msg, "success");
+      } else {
+        profile.sourceCloneStatus = "error";
+        fs.writeFileSync(profileFile, JSON.stringify(profile, null, 2), "utf-8");
+        emitStatus(`Clone failed: ${result.error}`, "error");
+      }
+
+      return result;
     }
   );
 

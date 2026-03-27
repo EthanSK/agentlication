@@ -1,7 +1,9 @@
 import CDP from "chrome-remote-interface";
 import { execFileSync, spawn } from "child_process";
 import * as http from "http";
-import type { CdpTarget, CdpPageInfo } from "@agentlication/contracts";
+import type { CdpTarget, CdpPageInfo, StatusLevel } from "@agentlication/contracts";
+
+export type StatusCallback = (text: string, level: StatusLevel) => void;
 
 /**
  * Manages CDP connections to target Electron apps.
@@ -21,30 +23,38 @@ export class CdpService {
    */
   async connect(
     appPath: string,
-    cdpPort: number
+    cdpPort: number,
+    onStatus?: StatusCallback
   ): Promise<{ success: boolean; error?: string }> {
     this.port = cdpPort;
+    const appName = appPath.split("/").pop()?.replace(".app", "") || "the app";
+    const status = onStatus ?? (() => {});
 
     try {
       // Disconnect any existing connection first
       await this.disconnect();
 
       // Step 1: Kill existing instances of the target app
+      status(`Quitting ${appName}...`, "progress");
       await this.killApp(appPath);
 
       // Step 2: Relaunch with CDP flag
+      status(`Launching ${appName} with CDP on port ${cdpPort}...`, "progress");
       this.launchWithCdp(appPath, cdpPort);
 
       // Step 3: Wait for CDP to be ready (poll /json/version)
+      status("Waiting for CDP to be ready...", "progress");
       await this.waitForCdp(cdpPort, 15000);
 
       // Step 4: Get available targets and pick the main page
+      status("Listing CDP targets...", "info");
       const targets = await CDP.List({ port: cdpPort });
       const pageTarget = targets.find(
         (t: Record<string, string>) => t.type === "page"
       );
 
       // Step 5: Connect to the target
+      status("Connecting to CDP target...", "progress");
       const connectOpts: { port: number; target?: string } = { port: cdpPort };
       if (pageTarget) {
         connectOpts.target = pageTarget.id;
@@ -52,9 +62,11 @@ export class CdpService {
 
       this.client = await CDP(connectOpts);
       await this.client.Runtime.enable();
+      status(`Connected to ${appName}`, "success");
 
       return { success: true };
     } catch (err) {
+      status(`Connection failed: ${String(err)}`, "error");
       return { success: false, error: String(err) };
     }
   }

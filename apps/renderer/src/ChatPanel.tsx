@@ -5,6 +5,7 @@ import type {
   AgentEvent,
   AgentChunk,
   ProviderStatusMap,
+  StatusMessage,
 } from "@agentlication/contracts";
 import ChatComposer from "./ChatComposer";
 
@@ -33,10 +34,26 @@ interface Props {
   placeholder?: string;
 }
 
+type FeedItem =
+  | { kind: "chat"; data: ChatMessage }
+  | { kind: "status"; data: StatusMessage };
+
 let messageIdCounter = 0;
 function nextId(): string {
   return `msg-${++messageIdCounter}-${Date.now()}`;
 }
+
+function formatTime(ts: number): string {
+  const d = new Date(ts);
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+const STATUS_ICONS: Record<string, string> = {
+  info: "\u2139\uFE0F",
+  success: "\u2705",
+  error: "\u274C",
+  progress: "\u23F3",
+};
 
 export default function ChatPanel({
   targetApp,
@@ -46,7 +63,7 @@ export default function ChatPanel({
   title,
   placeholder,
 }: Props) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [feed, setFeed] = useState<FeedItem[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [streamingText, setStreamingText] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -66,13 +83,16 @@ export default function ChatPanel({
           case "agent:done": {
             setStreamingText((prev) => {
               if (prev) {
-                setMessages((msgs) => [
-                  ...msgs,
+                setFeed((items) => [
+                  ...items,
                   {
-                    id: nextId(),
-                    role: "assistant",
-                    content: prev,
-                    timestamp: Date.now(),
+                    kind: "chat",
+                    data: {
+                      id: nextId(),
+                      role: "assistant",
+                      content: prev,
+                      timestamp: Date.now(),
+                    },
                   },
                 ]);
               }
@@ -83,13 +103,16 @@ export default function ChatPanel({
           }
           case "agent:error": {
             const { message } = event.payload as { message: string };
-            setMessages((msgs) => [
-              ...msgs,
+            setFeed((items) => [
+              ...items,
               {
-                id: nextId(),
-                role: "assistant",
-                content: `Error: ${message}`,
-                timestamp: Date.now(),
+                kind: "chat",
+                data: {
+                  id: nextId(),
+                  role: "assistant",
+                  content: `Error: ${message}`,
+                  timestamp: Date.now(),
+                },
               },
             ]);
             setStreaming(false);
@@ -103,10 +126,26 @@ export default function ChatPanel({
     return unsubscribe;
   }, []);
 
+  // Subscribe to status messages
+  useEffect(() => {
+    if (!window.agentlication?.onStatusMessage) return;
+
+    const unsubscribe = window.agentlication.onStatusMessage(
+      (msg: StatusMessage) => {
+        setFeed((items) => [
+          ...items,
+          { kind: "status", data: msg },
+        ]);
+      }
+    );
+
+    return unsubscribe;
+  }, []);
+
   // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, streamingText]);
+  }, [feed, streamingText]);
 
   const handleSend = async (text: string) => {
     const userMessage: ChatMessage = {
@@ -116,7 +155,7 @@ export default function ChatPanel({
       timestamp: Date.now(),
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    setFeed((prev) => [...prev, { kind: "chat", data: userMessage }]);
     setStreaming(true);
     setStreamingText("");
 
@@ -138,13 +177,16 @@ export default function ChatPanel({
         ? `I would interact with **${targetApp.name}** via CDP here.`
         : "I'm the Setup Agent. I can help you configure your Electron apps.";
       setTimeout(() => {
-        setMessages((prev) => [
+        setFeed((prev) => [
           ...prev,
           {
-            id: nextId(),
-            role: "assistant",
-            content: `[Dev mode] ${context} Model: ${selectedModel}`,
-            timestamp: Date.now(),
+            kind: "chat",
+            data: {
+              id: nextId(),
+              role: "assistant",
+              content: `[Dev mode] ${context} Model: ${selectedModel}`,
+              timestamp: Date.now(),
+            },
           },
         ]);
         setStreaming(false);
@@ -174,9 +216,9 @@ export default function ChatPanel({
         <span className="chat-target-name">{displayTitle}</span>
       </div>
 
-      {/* Messages */}
+      {/* Messages & Status Feed */}
       <div className="chat-messages">
-        {messages.length === 0 && !streaming && (
+        {feed.length === 0 && !streaming && (
           <div className="chat-empty">
             <p>
               {targetApp ? (
@@ -191,16 +233,29 @@ export default function ChatPanel({
           </div>
         )}
 
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`chat-message chat-message-${msg.role}`}
-          >
-            <div className="message-bubble">
-              <div className="message-content">{msg.content}</div>
+        {feed.map((item) => {
+          if (item.kind === "status") {
+            const s = item.data;
+            return (
+              <div key={s.id} className={`status-feed-item status-feed-${s.level}`}>
+                <span className="status-feed-icon">{STATUS_ICONS[s.level] || ""}</span>
+                <span className="status-feed-text">{s.text}</span>
+                <span className="status-feed-time">{formatTime(s.timestamp)}</span>
+              </div>
+            );
+          }
+          const msg = item.data;
+          return (
+            <div
+              key={msg.id}
+              className={`chat-message chat-message-${msg.role}`}
+            >
+              <div className="message-bubble">
+                <div className="message-content">{msg.content}</div>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         {/* Streaming indicator */}
         {streaming && streamingText && (

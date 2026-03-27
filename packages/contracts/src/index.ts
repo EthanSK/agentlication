@@ -111,6 +111,17 @@ export interface ChatMessage {
   timestamp: number;
 }
 
+// ── Status feed types ─────────────────────────────────────────
+
+export type StatusLevel = "info" | "success" | "error" | "progress";
+
+export interface StatusMessage {
+  id: string;
+  text: string;
+  level: StatusLevel;
+  timestamp: number;
+}
+
 // ── Target app types ───────────────────────────────────────────
 
 export interface TargetApp {
@@ -149,9 +160,36 @@ export interface AppProfile {
   installedVersion: string; // Version from Info.plist
   cdpPort: number;        // Auto-assigned CDP port
   sourceRepoUrl: string;  // Empty initially
+  sourceCloneStatus?: SourceCloneStatus; // Status of source repo cloning
   dateAgentlicated: string; // ISO date
   preferredModel?: string;   // Per-app model override (e.g. "opus-4.6")
   thinkingLevel?: string;    // Per-app thinking level override (e.g. "high")
+}
+
+// ── Source repo types ─────────────────────────────────────────
+
+export type SourceCloneStatus = "idle" | "searching" | "cloning" | "checking-out" | "done" | "error";
+
+export interface SourceRepoSearchResult {
+  repoUrl: string;
+  fullName: string;       // e.g. "EthanSK/producer-player"
+  description: string;
+  stars: number;
+  confidence: "high" | "medium" | "low" | "none";
+}
+
+export interface SourceRepoFindResult {
+  success: boolean;
+  repo?: SourceRepoSearchResult;
+  candidates?: SourceRepoSearchResult[];
+  error?: string;
+}
+
+export interface SourceCloneResult {
+  success: boolean;
+  clonedTo?: string;       // Path to cloned repo
+  checkedOutVersion?: string; // Tag that was checked out, if any
+  error?: string;
 }
 
 // ── IPC channel names ──────────────────────────────────────────
@@ -188,4 +226,9 @@ export const IPC = {
   // Companion window
   COMPANION_OPEN: "companion:open",
   COMPANION_CLOSE: "companion:close",
+  COMPANION_STATUS: "companion:status",
+
+  // Source repo
+  APP_FIND_SOURCE_REPO: "app:find-source-repo",
+  APP_CLONE_SOURCE: "app:clone-source",
 } as const;

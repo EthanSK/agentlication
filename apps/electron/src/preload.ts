@@ -24,6 +24,9 @@ const IPC = {
   PROVIDER_CHECK: "provider:check",
   COMPANION_OPEN: "companion:open",
   COMPANION_CLOSE: "companion:close",
+  COMPANION_STATUS: "companion:status",
+  APP_FIND_SOURCE_REPO: "app:find-source-repo",
+  APP_CLONE_SOURCE: "app:clone-source",
 } as const;
 
 // Expose a safe API to the renderer process
@@ -69,4 +72,17 @@ contextBridge.exposeInMainWorld("agentlication", {
   // Companion window
   openCompanion: (appName: string) => ipcRenderer.invoke(IPC.COMPANION_OPEN, appName),
   closeCompanion: () => ipcRenderer.invoke(IPC.COMPANION_CLOSE),
+
+  // Source repo
+  findSourceRepo: (appName: string, bundleId?: string) =>
+    ipcRenderer.invoke(IPC.APP_FIND_SOURCE_REPO, appName, bundleId),
+  cloneSource: (appName: string, repoUrl: string) =>
+    ipcRenderer.invoke(IPC.APP_CLONE_SOURCE, appName, repoUrl),
+
+  // Status feed
+  onStatusMessage: (callback: (msg: unknown) => void) => {
+    const handler = (_event: unknown, data: unknown) => callback(data);
+    ipcRenderer.on(IPC.COMPANION_STATUS, handler);
+    return () => ipcRenderer.removeListener(IPC.COMPANION_STATUS, handler);
+  },
 });

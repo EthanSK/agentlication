@@ -788,6 +788,82 @@ body {
   font-weight: 700;
 }
 
+/* ── Status Feed ──────────────────────────────────────────────── */
+
+.status-feed-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  max-width: 100%;
+  align-self: stretch;
+}
+
+.status-feed-icon {
+  flex-shrink: 0;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.status-feed-text {
+  flex: 1;
+  color: var(--text-secondary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-feed-time {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Level-specific styling */
+.status-feed-progress {
+  border-color: rgba(251, 191, 36, 0.15);
+  background: rgba(251, 191, 36, 0.04);
+}
+
+.status-feed-progress .status-feed-text {
+  color: #fbbf24;
+}
+
+.status-feed-success {
+  border-color: rgba(77, 255, 136, 0.15);
+  background: rgba(77, 255, 136, 0.04);
+}
+
+.status-feed-success .status-feed-text {
+  color: var(--success);
+}
+
+.status-feed-error {
+  border-color: rgba(255, 77, 77, 0.15);
+  background: rgba(255, 77, 77, 0.04);
+}
+
+.status-feed-error .status-feed-text {
+  color: var(--error);
+}
+
+.status-feed-info {
+  border-color: rgba(124, 108, 255, 0.12);
+  background: rgba(124, 108, 255, 0.04);
+}
+
+.status-feed-info .status-feed-text {
+  color: var(--accent);
+}
+
 /* ── Chat Messages ────────────────────────────────────────────── */
 
 .chat-messages {

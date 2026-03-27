@@ -185,3 +185,16 @@ Continued Agentlication development with companion enhancements, naming decision
 - **Interactive element mapping**: Proposed mapping all interactive elements during agentlication to build a structured agent toolkit (element selectors, labels, action types).
 - **Keyboard shortcuts extraction**: Extract the target app's shortcuts and menu structure during setup for agent reference — enables keyboard-driven automation.
 - **File update confirmations**: Added a rule to the agentlication-builder skill requiring a confirmation line at the end of every Telegram reply when IDEAS.md or CHAT-HISTORY.md is updated, so Ethan always knows what was captured.
+
+## 2026-03-27 — Source Repo Discovery & Cloning
+
+Implemented automatic source repository discovery and cloning during the agentlication flow:
+
+- **Source repo service** (`source-repo-service.ts`): New service that searches GitHub for an app's open source repo using the `gh` CLI. Uses multiple search queries (app name, app name + "electron", bundle ID terms) and ranks results by a confidence scoring algorithm that compares repo names against normalized app names and bundle IDs.
+- **Confidence scoring**: Repos are scored as high/medium/low/none based on name matching (exact match = high, partial match + stars = medium, description mentions = low). Sorts by confidence then stars.
+- **Cloning**: Clones the best-matching repo into `~/.agentlication/apps/<slug>/source/` with `--depth 1` for speed. After cloning, fetches tags and attempts to checkout a matching version tag (e.g., `v1.1.6`) if one exists.
+- **IPC channels**: Added `APP_FIND_SOURCE_REPO` and `APP_CLONE_SOURCE` channels to contracts, preload, main process handlers, and renderer types.
+- **Non-blocking integration**: Source repo discovery runs in the background after profile creation. The CDP connection proceeds in parallel so the user isn't blocked. Status updates are sent via the COMPANION_STATUS channel.
+- **Profile updates**: The `sourceRepoUrl` and `sourceCloneStatus` fields are updated in `profile.json` as the process progresses.
+- **Contracts**: Added `SourceCloneStatus`, `SourceRepoSearchResult`, `SourceRepoFindResult`, and `SourceCloneResult` types.
+- **Testing**: Verified the search correctly discovers `EthanSK/producer-player` with high confidence when searching for "Producer Player" with bundle ID "com.ethansk.producerplayer". Clone successfully pulls the repo into the source directory. Version tag matching works when tags exist (Producer Player doesn't have a `v1.1.6` tag, so it correctly stays on the default branch).
