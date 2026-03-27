@@ -235,4 +235,7 @@ export const IPC = {
   // Source repo
   APP_FIND_SOURCE_REPO: "app:find-source-repo",
   APP_CLONE_SOURCE: "app:clone-source",
+
+  // Companion agent (with HARNESS.md + DOM context)
+  COMPANION_AGENT_SEND: "companion:agent-send",
 } as const;

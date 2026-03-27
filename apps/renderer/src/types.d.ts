@@ -33,6 +33,7 @@ interface AgentlicationAPI {
   closeCompanion: () => Promise<void>;
   findSourceRepo: (appName: string, bundleId?: string) => Promise<SourceRepoFindResult>;
   cloneSource: (appName: string, repoUrl: string) => Promise<SourceCloneResult>;
+  companionAgentSend: (payload: { appName: string; message: string; modelId: string }) => Promise<void>;
   onStatusMessage: (callback: (msg: StatusMessage) => void) => () => void;
 }
 

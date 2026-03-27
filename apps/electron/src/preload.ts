@@ -27,6 +27,7 @@ const IPC = {
   COMPANION_STATUS: "companion:status",
   APP_FIND_SOURCE_REPO: "app:find-source-repo",
   APP_CLONE_SOURCE: "app:clone-source",
+  COMPANION_AGENT_SEND: "companion:agent-send",
 } as const;
 
 // Expose a safe API to the renderer process
@@ -78,6 +79,10 @@ contextBridge.exposeInMainWorld("agentlication", {
     ipcRenderer.invoke(IPC.APP_FIND_SOURCE_REPO, appName, bundleId),
   cloneSource: (appName: string, repoUrl: string) =>
     ipcRenderer.invoke(IPC.APP_CLONE_SOURCE, appName, repoUrl),
+
+  // Companion agent (with HARNESS.md + DOM context)
+  companionAgentSend: (payload: { appName: string; message: string; modelId: string }) =>
+    ipcRenderer.invoke(IPC.COMPANION_AGENT_SEND, payload),
 
   // Status feed
   onStatusMessage: (callback: (msg: unknown) => void) => {

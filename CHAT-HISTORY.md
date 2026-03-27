@@ -215,3 +215,24 @@ Added support for showing ALL macOS applications in the app picker, not just Ele
 - **CSS additions** (`styles.css`): New styles for `.app-filter-bar`, `.app-search-input`, `.app-filter-toggle`, `.app-section-header`, `.app-section-count`, `.app-section-hint`, `.app-card-non-electron`, `.non-electron-badge`, and `.non-electron-badge-text`.
 - **Dev mock data**: Updated the dev-mode mock data in AppPicker to include non-Electron apps (Safari, Finder, Preview, Calendar, Music, Notes) alongside the existing Electron mocks.
 - **No accessibility API implementation yet**: This change is UI-only. The actual macOS Accessibility API interaction will be implemented separately. Non-Electron apps can be agentlicated and will get profiles, but CDP-related features are skipped gracefully.
+
+## 2026-03-26 — Companion Agent Brain + Status Feed Verification
+
+Two changes to make the companion chat panel functional as an AI agent:
+
+### Task 1: Status Feed in Companion Chat
+- Verified that the status feed infrastructure was already fully implemented from prior sessions:
+  - `emitStatus()` helper in main.ts sends `COMPANION_STATUS` IPC events
+  - `onStatusMessage` in preload.ts subscribes to status events
+  - ChatPanel renders status messages inline with chat messages via the unified `FeedItem` type
+  - Status messages have level-specific styling (progress=amber, success=green, error=red, info=purple)
+  - Status icons include: info, success, error, progress, searching, file, connection
+- Status messages are emitted during: CDP connect flow, profile creation, source repo search, source cloning, DOM reading
+
+### Task 2: Wire Up Companion Agent Brain
+- **New IPC channel `COMPANION_AGENT_SEND`**: Added to contracts, preload, and types. Takes `{ appName, message, modelId }`.
+- **Main process handler**: Reads the app's `HARNESS.md` from `~/.agentlication/apps/{slug}/HARNESS.md`, gets CDP page info (title, URL, framework, DOM structure, localStorage keys) and full DOM snapshot via CDP, then builds an enriched system prompt combining all context.
+- **System prompt includes**: Agent identity ("Companion Agent for [App]"), HARNESS.md contents, page info summary, DOM snapshot (truncated to 50KB), available CDP actions (CLICK, EVAL, TYPE placeholders for future implementation).
+- **ChatPanel updated**: Companion mode now uses `companionAgentSend()` instead of the generic `agentSend()`, ensuring every companion message includes HARNESS.md + DOM context.
+- **Preload bridge**: `companionAgentSend` exposed via contextBridge.
+- **Tested**: Sent "What is Producer Player?" in the companion chat; Claude responded with a detailed analysis of the app using the system prompt context. Status messages from source repo search also displayed inline in the feed.

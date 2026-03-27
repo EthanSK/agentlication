@@ -473,6 +473,93 @@ ${appData.name} is an Electron application located at ${appData.path}.
     }
   );
 
+  // ── Companion agent handler (with HARNESS.md + DOM context) ────
+  ipcMain.handle(
+    IPC.COMPANION_AGENT_SEND,
+    async (
+      _event,
+      payload: { appName: string; message: string; modelId: string }
+    ) => {
+      const { appName, message, modelId } = payload;
+      const slug = slugify(appName);
+      const appDir = path.join(PROFILE_ROOT, slug);
+
+      // Read HARNESS.md if it exists
+      let harnessContent = "";
+      const harnessPath = path.join(appDir, "HARNESS.md");
+      try {
+        if (fs.existsSync(harnessPath)) {
+          harnessContent = fs.readFileSync(harnessPath, "utf-8");
+        }
+      } catch {
+        // Non-critical
+      }
+
+      // Get DOM snapshot via CDP if connected
+      let domSnapshot = "";
+      let pageInfo: CdpPageInfo | null = null;
+      if (cdpService.isConnected()) {
+        try {
+          pageInfo = await cdpService.getPageInfo();
+        } catch {
+          // Non-critical
+        }
+        try {
+          domSnapshot = await cdpService.getDOM();
+        } catch {
+          // Non-critical
+        }
+      }
+
+      // Build an enriched system prompt
+      const domSection = domSnapshot
+        ? `\n\n## Current DOM Snapshot\n\`\`\`html\n${domSnapshot.slice(0, 50000)}\n\`\`\``
+        : "\n\n(No DOM snapshot available -- CDP not connected)";
+
+      const pageInfoSection = pageInfo
+        ? `\n\n## Page Info\n- Title: ${pageInfo.title}\n- URL: ${pageInfo.url}\n- Framework: ${pageInfo.framework || "unknown"}\n- DOM structure: ${pageInfo.documentStructure}\n- localStorage keys: ${pageInfo.localStorageKeys.join(", ") || "none"}`
+        : "";
+
+      const harnessSection = harnessContent
+        ? `\n\n## HARNESS.md\n${harnessContent}`
+        : "";
+
+      const systemPrompt = `You are a Companion Agent for ${appName}. You can see and interact with the app via Chrome DevTools Protocol (CDP).
+
+You can:
+1. Read the current state of the app (DOM, JS variables, stores)
+2. Execute JavaScript in the app's context
+3. Click buttons, fill forms, navigate
+4. Inject custom UI elements
+
+Available actions (for future use):
+- To click an element: [CLICK: selector]
+- To evaluate JS: [EVAL: code]
+- To type text: [TYPE: selector, text]
+
+When you need to interact with the app, output JavaScript code in a \`\`\`js\`\`\` code block.
+The code will be executed in the app's renderer process via CDP.
+
+Be concise and helpful. Match the app's existing design when injecting UI.
+${harnessSection}${pageInfoSection}${domSection}`;
+
+      // Send to the agent with the enriched system prompt
+      const onEvent = (event: unknown) => {
+        mainWindow?.webContents.send(IPC.AGENT_EVENT, event);
+        if (companionWindow && !companionWindow.isDestroyed()) {
+          companionWindow.webContents.send(IPC.AGENT_EVENT, event);
+        }
+      };
+
+      return agentService.sendWithSystemPrompt(
+        message,
+        modelId,
+        systemPrompt,
+        onEvent
+      );
+    }
+  );
+
   // ── Companion window handlers ──────────────────────────────────
   ipcMain.handle(IPC.COMPANION_OPEN, async (_event, appName: string) => {
     openCompanionWindow(appName);

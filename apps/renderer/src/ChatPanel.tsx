@@ -165,8 +165,12 @@ export default function ChatPanel({
 
     if (window.agentlication) {
       if (targetApp) {
-        // Companion chat — uses CDP context
-        await window.agentlication.agentSend(text, selectedModel);
+        // Companion chat — uses HARNESS.md + DOM context
+        await window.agentlication.companionAgentSend({
+          appName: targetApp.name,
+          message: text,
+          modelId: selectedModel,
+        });
       } else {
         // Hub / Setup Agent chat — uses dedicated system prompt
         await window.agentlication.agentSendHub(
