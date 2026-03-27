@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import type { TargetApp, CdpPageInfo, AppProfile } from "@agentlication/contracts";
 
 interface Props {
@@ -10,6 +10,17 @@ interface ConnectionState {
   status: "disconnected" | "connecting" | "connected" | "error";
   info: CdpPageInfo | null;
   error?: string;
+}
+
+/** SVG info icon for non-Electron badge tooltip */
+function InfoIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M8 7v4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <circle cx="8" cy="5" r="0.75" fill="currentColor" />
+    </svg>
+  );
 }
 
 export default function AppPicker({
@@ -25,6 +36,10 @@ export default function AppPicker({
   const [agentlicatedApps, setAgentlicatedApps] = useState<Set<string>>(new Set());
   /** Tracks CDP connection state per app (by name). */
   const [connections, setConnections] = useState<Record<string, ConnectionState>>({});
+  /** Search/filter input */
+  const [searchQuery, setSearchQuery] = useState("");
+  /** Show all apps or Electron only */
+  const [showAllApps, setShowAllApps] = useState(true);
 
   useEffect(() => {
     loadApps();
@@ -42,6 +57,12 @@ export default function AppPicker({
           { name: "VS Code", path: "/Applications/Visual Studio Code.app", isElectron: true },
           { name: "Slack", path: "/Applications/Slack.app", isElectron: true },
           { name: "Notion", path: "/Applications/Notion.app", isElectron: true },
+          { name: "Safari", path: "/Applications/Safari.app", isElectron: false },
+          { name: "Finder", path: "/System/Library/CoreServices/Finder.app", isElectron: false },
+          { name: "Preview", path: "/Applications/Preview.app", isElectron: false },
+          { name: "Calendar", path: "/Applications/Calendar.app", isElectron: false },
+          { name: "Music", path: "/Applications/Music.app", isElectron: false },
+          { name: "Notes", path: "/Applications/Notes.app", isElectron: false },
         ];
       }
       setApps(scanned);
@@ -64,6 +85,26 @@ export default function AppPicker({
       setLoading(false);
     }
   };
+
+  /** Filter and group apps based on search query and toggle */
+  const { electronApps, otherApps } = useMemo(() => {
+    const query = searchQuery.toLowerCase().trim();
+    const filtered = apps.filter((app) => {
+      if (!showAllApps && !app.isElectron) return false;
+      if (query) {
+        return app.name.toLowerCase().includes(query);
+      }
+      return true;
+    });
+
+    return {
+      electronApps: filtered.filter((a) => a.isElectron),
+      otherApps: filtered.filter((a) => !a.isElectron),
+    };
+  }, [apps, searchQuery, showAllApps]);
+
+  const electronCount = apps.filter((a) => a.isElectron).length;
+  const totalCount = apps.length;
 
   const setConnectionState = (appName: string, state: ConnectionState) => {
     setConnections((prev) => ({ ...prev, [appName]: state }));
@@ -104,6 +145,17 @@ export default function AppPicker({
       } finally {
         setCreatingProfile(null);
       }
+    }
+
+    // For non-Electron apps, skip CDP connection entirely
+    if (!app.isElectron) {
+      onAppSelected(app);
+
+      // Open companion window for this app
+      if (window.agentlication?.openCompanion) {
+        window.agentlication.openCompanion(app.name);
+      }
+      return;
     }
 
     // Step 2: Get profile to know the CDP port
@@ -182,11 +234,107 @@ export default function AppPicker({
     handleAgentlicate({ name, path: customPath.trim(), isElectron: true });
   };
 
+  const renderAppCard = (app: TargetApp) => {
+    const conn = connections[app.name];
+    return (
+      <div key={app.path} className={`app-card ${!app.isElectron ? "app-card-non-electron" : ""}`}>
+        <div className="app-icon">
+          {app.icon ? (
+            <img src={app.icon} alt={app.name} />
+          ) : (
+            <div className="app-icon-placeholder">
+              {app.name.charAt(0)}
+            </div>
+          )}
+        </div>
+        <div className="app-info">
+          <div className="app-name-row">
+            <span className="app-name">{app.name}</span>
+            {!app.isElectron && (
+              <span className="non-electron-badge" title="Limited support — no DOM access. Uses macOS Accessibility API.">
+                <InfoIcon />
+                <span className="non-electron-badge-text">Native</span>
+              </span>
+            )}
+            {conn && (
+              <span
+                className={`cdp-status-dot cdp-status-${conn.status}`}
+                title={
+                  conn.status === "connected"
+                    ? `Connected${conn.info?.title ? ` - ${conn.info.title}` : ""}`
+                    : conn.status === "connecting"
+                      ? "Connecting..."
+                      : conn.status === "error"
+                        ? conn.error || "Connection error"
+                        : "Disconnected"
+                }
+              />
+            )}
+          </div>
+          <span className="app-path">{app.path}</span>
+          {conn?.status === "connected" && conn.info && (
+            <div className="cdp-info">
+              {conn.info.title && (
+                <span className="cdp-info-item">
+                  {conn.info.title}
+                </span>
+              )}
+              {conn.info.framework && (
+                <span className="cdp-info-badge">
+                  {conn.info.framework}
+                </span>
+              )}
+              {conn.info.url && (
+                <span className="cdp-info-url">
+                  {conn.info.url}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+        {agentlicatedApps.has(app.name) && (
+          <span className="agentlicated-badge">Agentlicated</span>
+        )}
+        <button
+          className="agentlicate-btn"
+          onClick={() => handleAgentlicate(app)}
+          disabled={launching === app.path || creatingProfile === app.path}
+        >
+          {creatingProfile === app.path
+            ? "Creating profile..."
+            : launching === app.path
+              ? "Connecting..."
+              : agentlicatedApps.has(app.name)
+                ? "Reconnect"
+                : "Agentlicate"}
+        </button>
+      </div>
+    );
+  };
+
   return (
     <div className="app-picker">
       <div className="picker-header">
         <h1>Agentlication</h1>
-        <p className="subtitle">Select an Electron app to agentlicate</p>
+        <p className="subtitle">Select an app to agentlicate</p>
+      </div>
+
+      {/* Search and filter bar */}
+      <div className="app-filter-bar">
+        <input
+          type="text"
+          className="app-search-input"
+          placeholder="Search apps..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+        <button
+          className={`app-filter-toggle ${showAllApps ? "app-filter-toggle-active" : ""}`}
+          onClick={() => setShowAllApps(!showAllApps)}
+          title={showAllApps ? "Showing all apps" : "Showing Electron apps only"}
+        >
+          {showAllApps ? "All Apps" : "Electron Only"}
+        </button>
       </div>
 
       {/* Custom path input */}
@@ -208,81 +356,40 @@ export default function AppPicker({
       {/* App list */}
       <div className="app-list">
         {loading ? (
-          <div className="loading">Scanning for Electron apps...</div>
-        ) : apps.length === 0 ? (
-          <div className="empty">No Electron apps found. Try entering a path above.</div>
+          <div className="loading">Scanning for apps...</div>
+        ) : electronApps.length === 0 && otherApps.length === 0 ? (
+          <div className="empty">
+            {searchQuery
+              ? "No apps match your search."
+              : "No apps found. Try entering a path above."}
+          </div>
         ) : (
-          apps.map((app) => {
-            const conn = connections[app.name];
-            return (
-              <div key={app.path} className="app-card">
-                <div className="app-icon">
-                  {app.icon ? (
-                    <img src={app.icon} alt={app.name} />
-                  ) : (
-                    <div className="app-icon-placeholder">
-                      {app.name.charAt(0)}
-                    </div>
-                  )}
-                </div>
-                <div className="app-info">
-                  <div className="app-name-row">
-                    <span className="app-name">{app.name}</span>
-                    {conn && (
-                      <span
-                        className={`cdp-status-dot cdp-status-${conn.status}`}
-                        title={
-                          conn.status === "connected"
-                            ? `Connected${conn.info?.title ? ` - ${conn.info.title}` : ""}`
-                            : conn.status === "connecting"
-                              ? "Connecting..."
-                              : conn.status === "error"
-                                ? conn.error || "Connection error"
-                                : "Disconnected"
-                        }
-                      />
-                    )}
+          <>
+            {/* Electron apps section */}
+            {electronApps.length > 0 && (
+              <>
+                {showAllApps && otherApps.length > 0 && (
+                  <div className="app-section-header">
+                    <span className="app-section-label">Electron Apps</span>
+                    <span className="app-section-count">{electronCount}</span>
                   </div>
-                  <span className="app-path">{app.path}</span>
-                  {conn?.status === "connected" && conn.info && (
-                    <div className="cdp-info">
-                      {conn.info.title && (
-                        <span className="cdp-info-item">
-                          {conn.info.title}
-                        </span>
-                      )}
-                      {conn.info.framework && (
-                        <span className="cdp-info-badge">
-                          {conn.info.framework}
-                        </span>
-                      )}
-                      {conn.info.url && (
-                        <span className="cdp-info-url">
-                          {conn.info.url}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
-                {agentlicatedApps.has(app.name) && (
-                  <span className="agentlicated-badge">Agentlicated</span>
                 )}
-                <button
-                  className="agentlicate-btn"
-                  onClick={() => handleAgentlicate(app)}
-                  disabled={launching === app.path || creatingProfile === app.path}
-                >
-                  {creatingProfile === app.path
-                    ? "Creating profile..."
-                    : launching === app.path
-                      ? "Connecting..."
-                      : agentlicatedApps.has(app.name)
-                        ? "Reconnect"
-                        : "Agentlicate"}
-                </button>
-              </div>
-            );
-          })
+                {electronApps.map(renderAppCard)}
+              </>
+            )}
+
+            {/* Non-Electron apps section */}
+            {showAllApps && otherApps.length > 0 && (
+              <>
+                <div className="app-section-header app-section-other">
+                  <span className="app-section-label">Other Apps</span>
+                  <span className="app-section-count">{totalCount - electronCount}</span>
+                  <span className="app-section-hint">Limited support — Accessibility API only</span>
+                </div>
+                {otherApps.map(renderAppCard)}
+              </>
+            )}
+          </>
         )}
       </div>
     </div>

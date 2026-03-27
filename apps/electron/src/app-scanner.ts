@@ -76,14 +76,15 @@ function extractAppIcon(appPath: string, appName: string): string | undefined {
 }
 
 /**
- * Scan /Applications and common Electron build output directories for Electron apps.
+ * Scan /Applications and common Electron build output directories for ALL apps.
+ * Returns both Electron and non-Electron apps, with `isElectron` flag set accordingly.
  * De-duplicates by app name, preferring /Applications/ version when both exist.
  */
 export function scanElectronApps(): TargetApp[] {
   /** Map from app name -> TargetApp (used for de-duplication) */
   const appMap = new Map<string, TargetApp>();
 
-  // 1. Scan /Applications (preferred source)
+  // 1. Scan /Applications — include ALL .app bundles
   try {
     const entries = fs.readdirSync(APPLICATIONS_DIR);
 
@@ -93,22 +94,20 @@ export function scanElectronApps(): TargetApp[] {
       const appPath = path.join(APPLICATIONS_DIR, entry);
       const appName = entry.replace(".app", "");
       const isElectron = checkIfElectron(appPath);
+      const icon = extractAppIcon(appPath, appName);
 
-      if (isElectron) {
-        const icon = extractAppIcon(appPath, appName);
-        appMap.set(appName, {
-          name: appName,
-          path: appPath,
-          icon,
-          isElectron: true,
-        });
-      }
+      appMap.set(appName, {
+        name: appName,
+        path: appPath,
+        icon,
+        isElectron,
+      });
     }
   } catch (err) {
     console.error("Failed to scan /Applications:", err);
   }
 
-  // 2. Scan dev build output directories under ~/Projects
+  // 2. Scan dev build output directories under ~/Projects (Electron apps only)
   try {
     const projectsDir = path.join(os.homedir(), "Projects");
     if (fs.existsSync(projectsDir)) {
@@ -151,9 +150,11 @@ export function scanElectronApps(): TargetApp[] {
     console.error("Failed to scan dev build directories:", err);
   }
 
-  return Array.from(appMap.values()).sort((a, b) =>
-    a.name.localeCompare(b.name)
-  );
+  // Sort: Electron apps first, then alphabetical within each group
+  return Array.from(appMap.values()).sort((a, b) => {
+    if (a.isElectron !== b.isElectron) return a.isElectron ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
 }
 
 function checkIfElectron(appPath: string): boolean {

@@ -4,7 +4,7 @@ import * as fs from "fs";
 import * as os from "os";
 import { execFileSync, execSync } from "child_process";
 import { IPC } from "@agentlication/contracts";
-import type { AppProfile, TargetApp, CdpPageInfo, StatusMessage, SourceRepoFindResult, SourceCloneResult } from "@agentlication/contracts";
+import type { AppProfile, TargetApp, CdpPageInfo, StatusMessage, StatusIcon, SourceRepoFindResult, SourceCloneResult } from "@agentlication/contracts";
 import { AgentService } from "./agent-service";
 import { CdpService } from "./cdp-service";
 import { scanElectronApps, launchAppWithDebugging } from "./app-scanner";
@@ -131,11 +131,12 @@ function nextCdpPort(): number {
 let statusIdCounter = 0;
 
 /** Emit a status message to the companion window (and main window). */
-function emitStatus(text: string, level: "info" | "success" | "error" | "progress") {
+function emitStatus(text: string, level: "info" | "success" | "error" | "progress", icon?: StatusIcon) {
   const msg: StatusMessage = {
     id: `status-${++statusIdCounter}-${Date.now()}`,
     text,
     level,
+    icon,
     timestamp: Date.now(),
   };
 
@@ -179,7 +180,7 @@ function registerIpcHandlers() {
           return { success: true, profile: existing };
         }
 
-        emitStatus(`Creating app profile for ${appData.name}...`, "progress");
+        emitStatus(`Creating app profile for ${appData.name}...`, "progress", "file");
 
         // Create directory structure
         fs.mkdirSync(profileDir, { recursive: true });
@@ -222,10 +223,10 @@ ${appData.name} is an Electron application located at ${appData.path}.
 `;
         fs.writeFileSync(path.join(profileDir, "HARNESS.md"), harnessContent, "utf-8");
 
-        emitStatus(`App profile created for ${appData.name}`, "success");
+        emitStatus(`App profile created for ${appData.name}`, "success", "success");
         return { success: true, profile };
       } catch (err) {
-        emitStatus(`Failed to create profile: ${String(err)}`, "error");
+        emitStatus(`Failed to create profile: ${String(err)}`, "error", "error");
         return { success: false, error: String(err) };
       }
     }
@@ -267,7 +268,7 @@ ${appData.name} is an Electron application located at ${appData.path}.
           message: `Do you want to quit and restart ${appName}? It will be relaunched with CDP enabled.`,
         });
         if (response === 1) {
-          emitStatus("User cancelled restart", "error");
+          emitStatus("User cancelled restart", "error", "error");
           return { success: false, error: "User cancelled restart" };
         }
       }
@@ -301,17 +302,17 @@ ${appData.name} is an Electron application located at ${appData.path}.
   ipcMain.handle(IPC.CDP_GET_INFO, async (): Promise<CdpPageInfo | null> => {
     if (!cdpService.isConnected()) return null;
     try {
-      emitStatus("Reading page info...", "progress");
+      emitStatus("Reading DOM structure...", "progress", "searching");
       const info = await cdpService.getPageInfo();
       if (info.framework) {
-        emitStatus(`Detected framework: ${info.framework}`, "info");
+        emitStatus(`Detected framework: ${info.framework}`, "info", "info");
       } else {
-        emitStatus("No framework detected", "info");
+        emitStatus("No framework detected", "info", "info");
       }
-      emitStatus("Agentlication complete", "success");
+      emitStatus("Agentlication complete", "success", "success");
       return info;
     } catch (err) {
-      emitStatus(`Failed to read page info: ${String(err)}`, "error");
+      emitStatus(`Failed to read page info: ${String(err)}`, "error", "error");
       return null;
     }
   });
@@ -401,11 +402,12 @@ ${appData.name} is an Electron application located at ${appData.path}.
   ipcMain.handle(
     IPC.APP_FIND_SOURCE_REPO,
     async (_event, appName: string, bundleId?: string): Promise<SourceRepoFindResult> => {
-      emitStatus(`Searching GitHub for ${appName} source repo...`, "progress");
+      emitStatus(`Searching GitHub for ${appName} source repo...`, "progress", "searching");
       const result = await findSourceRepo(appName, bundleId);
       if (result.success && result.repo) {
         emitStatus(
           `Found source repo: ${result.repo.fullName} (${result.repo.confidence} confidence, ${result.repo.stars} stars)`,
+          "success",
           "success"
         );
 
@@ -423,7 +425,7 @@ ${appData.name} is an Electron application located at ${appData.path}.
           // Non-critical — profile update failed but search result is still valid
         }
       } else if (result.error) {
-        emitStatus(`Source repo search: ${result.error}`, "info");
+        emitStatus(`Source repo search: ${result.error}`, "info", "info");
       }
       return result;
     }
@@ -432,13 +434,13 @@ ${appData.name} is an Electron application located at ${appData.path}.
   ipcMain.handle(
     IPC.APP_CLONE_SOURCE,
     async (_event, appName: string, repoUrl: string): Promise<SourceCloneResult> => {
-      emitStatus(`Cloning ${repoUrl}...`, "progress");
+      emitStatus(`Cloning ${repoUrl}...`, "progress", "file");
 
       // Get the profile
       const slug = slugify(appName);
       const profileFile = path.join(PROFILE_ROOT, slug, "profile.json");
       if (!fs.existsSync(profileFile)) {
-        emitStatus("Cannot clone: app profile not found", "error");
+        emitStatus("Cannot clone: app profile not found", "error", "error");
         return { success: false, error: "App profile not found" };
       }
 
@@ -460,11 +462,11 @@ ${appData.name} is an Electron application located at ${appData.path}.
         if (result.checkedOutVersion) {
           msg += ` (checked out ${result.checkedOutVersion})`;
         }
-        emitStatus(msg, "success");
+        emitStatus(msg, "success", "success");
       } else {
         profile.sourceCloneStatus = "error";
         fs.writeFileSync(profileFile, JSON.stringify(profile, null, 2), "utf-8");
-        emitStatus(`Clone failed: ${result.error}`, "error");
+        emitStatus(`Clone failed: ${result.error}`, "error", "error");
       }
 
       return result;

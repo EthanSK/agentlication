@@ -6,6 +6,7 @@ import type {
   AgentChunk,
   ProviderStatusMap,
   StatusMessage,
+  StatusIcon,
 } from "@agentlication/contracts";
 import ChatComposer from "./ChatComposer";
 
@@ -53,6 +54,9 @@ const STATUS_ICONS: Record<string, string> = {
   success: "\u2705",
   error: "\u274C",
   progress: "\u23F3",
+  searching: "\uD83D\uDD0D",
+  file: "\uD83D\uDCC1",
+  connection: "\uD83D\uDD0C",
 };
 
 export default function ChatPanel({
@@ -236,9 +240,10 @@ export default function ChatPanel({
         {feed.map((item) => {
           if (item.kind === "status") {
             const s = item.data;
+            const iconKey = s.icon || s.level;
             return (
               <div key={s.id} className={`status-feed-item status-feed-${s.level}`}>
-                <span className="status-feed-icon">{STATUS_ICONS[s.level] || ""}</span>
+                <span className="status-feed-icon">{STATUS_ICONS[iconKey] || STATUS_ICONS[s.level] || ""}</span>
                 <span className="status-feed-text">{s.text}</span>
                 <span className="status-feed-time">{formatTime(s.timestamp)}</span>
               </div>

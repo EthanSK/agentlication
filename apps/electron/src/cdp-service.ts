@@ -1,9 +1,9 @@
 import CDP from "chrome-remote-interface";
 import { execFileSync, spawn } from "child_process";
 import * as http from "http";
-import type { CdpTarget, CdpPageInfo, StatusLevel } from "@agentlication/contracts";
+import type { CdpTarget, CdpPageInfo, StatusLevel, StatusIcon } from "@agentlication/contracts";
 
-export type StatusCallback = (text: string, level: StatusLevel) => void;
+export type StatusCallback = (text: string, level: StatusLevel, icon?: StatusIcon) => void;
 
 /**
  * Manages CDP connections to target Electron apps.
@@ -35,26 +35,26 @@ export class CdpService {
       await this.disconnect();
 
       // Step 1: Kill existing instances of the target app
-      status(`Quitting ${appName}...`, "progress");
+      status(`Quitting ${appName}...`, "progress", "connection");
       await this.killApp(appPath);
 
       // Step 2: Relaunch with CDP flag
-      status(`Launching ${appName} with CDP on port ${cdpPort}...`, "progress");
+      status(`Launching ${appName} with CDP on port ${cdpPort}...`, "progress", "connection");
       this.launchWithCdp(appPath, cdpPort);
 
       // Step 3: Wait for CDP to be ready (poll /json/version)
-      status("Waiting for CDP to be ready...", "progress");
+      status("Waiting for CDP to be ready...", "progress", "progress");
       await this.waitForCdp(cdpPort, 15000);
 
       // Step 4: Get available targets and pick the main page
-      status("Listing CDP targets...", "info");
+      status("Listing CDP targets...", "info", "searching");
       const targets = await CDP.List({ port: cdpPort });
       const pageTarget = targets.find(
         (t: Record<string, string>) => t.type === "page"
       );
 
       // Step 5: Connect to the target
-      status("Connecting to CDP target...", "progress");
+      status("Connecting to CDP target...", "progress", "connection");
       const connectOpts: { port: number; target?: string } = { port: cdpPort };
       if (pageTarget) {
         connectOpts.target = pageTarget.id;
@@ -62,11 +62,11 @@ export class CdpService {
 
       this.client = await CDP(connectOpts);
       await this.client.Runtime.enable();
-      status(`Connected to ${appName}`, "success");
+      status(`Connected to ${appName}`, "success", "success");
 
       return { success: true };
     } catch (err) {
-      status(`Connection failed: ${String(err)}`, "error");
+      status(`Connection failed: ${String(err)}`, "error", "error");
       return { success: false, error: String(err) };
     }
   }

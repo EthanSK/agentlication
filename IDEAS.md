@@ -219,6 +219,16 @@
 - Store in HARNESS.md or a separate `shortcuts.json` for agent reference
 - Enables the agent to use keyboard shortcuts instead of clicking (faster, more reliable)
 
+## Non-Electron Agentlication Flow
+
+- When a non-Electron app is agentlicated, profile creation works the same (profile.json, HARNESS.md, etc.)
+- But instead of CDP, the Companion Agent uses macOS Accessibility API for interaction
+- Consider a separate `accessibility-service.ts` in the Electron main process for AXUIElement access
+- The companion chat could accept "click the X button" or "type Y in the text field" commands
+- Screenshots + vision model could supplement the accessibility tree for UI understanding
+- Need to handle Accessibility permissions (System Preferences > Privacy > Accessibility)
+- Could auto-prompt the user to grant Accessibility access on first non-Electron agentlication
+
 ## Open Questions
 
 - Local installer vs cloud build queue?
@@ -226,3 +236,5 @@
 - How to handle merge conflicts when source repos update?
 - Should custom UIs be in branches or worktrees?
 - Dev server shipping — is it possible to ship an Electron app that runs `npm run dev`?
+- For non-Electron apps: should the agent use screenshots + vision model, accessibility tree, or both?
+- Should non-Electron apps get a different companion UI that shows the accessibility tree instead of DOM viewer?

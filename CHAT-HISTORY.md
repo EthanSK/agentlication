@@ -198,3 +198,20 @@ Implemented automatic source repository discovery and cloning during the agentli
 - **Profile updates**: The `sourceRepoUrl` and `sourceCloneStatus` fields are updated in `profile.json` as the process progresses.
 - **Contracts**: Added `SourceCloneStatus`, `SourceRepoSearchResult`, `SourceRepoFindResult`, and `SourceCloneResult` types.
 - **Testing**: Verified the search correctly discovers `EthanSK/producer-player` with high confidence when searching for "Producer Player" with bundle ID "com.ethansk.producerplayer". Clone successfully pulls the repo into the source directory. Version tag matching works when tags exist (Producer Player doesn't have a `v1.1.6` tag, so it correctly stays on the default branch).
+
+## 2026-03-26 — Non-Electron App Support (All Apps in Picker)
+
+Added support for showing ALL macOS applications in the app picker, not just Electron apps:
+
+- **App scanner update** (`app-scanner.ts`): The `scanElectronApps()` function now scans ALL `.app` bundles in `/Applications/`, not just those containing the Electron framework. Each app gets an `isElectron` flag based on framework detection. Sorting order: Electron apps first, then alphabetical within each group.
+- **AppPicker UI overhaul** (`AppPicker.tsx`):
+  - Added search/filter input at the top of the app list for filtering by app name
+  - Added "All Apps" / "Electron Only" toggle button to switch between showing all apps or just Electron ones
+  - Apps are grouped into "Electron Apps" and "Other Apps" sections with headers showing counts
+  - Non-Electron apps display a "Native" badge (amber-colored) with an info icon and tooltip: "Limited support — no DOM access. Uses macOS Accessibility API."
+  - Non-Electron app cards have slightly muted styling (0.8 opacity) that becomes full on hover
+  - The "Other Apps" section header includes a hint text about Accessibility API limitations
+- **Graceful CDP skip**: When agentlicating a non-Electron app, the CDP connection flow is skipped entirely. Profile creation still works, and the companion window opens — but no CDP kill/relaunch/connect cycle happens.
+- **CSS additions** (`styles.css`): New styles for `.app-filter-bar`, `.app-search-input`, `.app-filter-toggle`, `.app-section-header`, `.app-section-count`, `.app-section-hint`, `.app-card-non-electron`, `.non-electron-badge`, and `.non-electron-badge-text`.
+- **Dev mock data**: Updated the dev-mode mock data in AppPicker to include non-Electron apps (Safari, Finder, Preview, Calendar, Music, Notes) alongside the existing Electron mocks.
+- **No accessibility API implementation yet**: This change is UI-only. The actual macOS Accessibility API interaction will be implemented separately. Non-Electron apps can be agentlicated and will get profiles, but CDP-related features are skipped gracefully.

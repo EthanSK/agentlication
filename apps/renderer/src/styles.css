@@ -364,6 +364,134 @@ body {
   font-family: "SF Mono", "Fira Code", "Consolas", monospace;
 }
 
+/* ── App Filter Bar ──────────────────────────────────────────── */
+
+.app-filter-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+}
+
+.app-search-input {
+  flex: 1;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.app-search-input:focus {
+  border-color: var(--accent);
+}
+
+.app-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.app-filter-toggle {
+  padding: 8px 14px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.app-filter-toggle:hover {
+  background: var(--bg-hover);
+  border-color: #333;
+  color: var(--text-primary);
+}
+
+.app-filter-toggle-active {
+  border-color: rgba(124, 108, 255, 0.4);
+  color: var(--accent);
+}
+
+/* ── App Section Headers ─────────────────────────────────────── */
+
+.app-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 4px 6px;
+  margin-top: 4px;
+}
+
+.app-section-other {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.app-section-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.app-section-count {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 1px 7px;
+  border-radius: 10px;
+}
+
+.app-section-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+/* ── Non-Electron App Card ───────────────────────────────────── */
+
+.app-card-non-electron {
+  opacity: 0.8;
+}
+
+.app-card-non-electron:hover {
+  opacity: 1;
+}
+
+.non-electron-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  background: rgba(251, 191, 36, 0.1);
+  color: #d4a017;
+  border: 1px solid rgba(251, 191, 36, 0.2);
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: help;
+  transition: background 0.15s;
+}
+
+.non-electron-badge:hover {
+  background: rgba(251, 191, 36, 0.18);
+}
+
+.non-electron-badge-text {
+  line-height: 1;
+}
+
 .loading, .empty {
   text-align: center;
   padding: 40px;
@@ -803,6 +931,22 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.06);
   max-width: 100%;
   align-self: stretch;
+  animation: status-fade-in 0.25s ease-out;
+}
+
+.status-feed-item + .status-feed-item {
+  margin-top: -4px;
+}
+
+@keyframes status-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .status-feed-icon {

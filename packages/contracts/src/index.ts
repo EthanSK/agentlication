@@ -115,10 +115,14 @@ export interface ChatMessage {
 
 export type StatusLevel = "info" | "success" | "error" | "progress";
 
+/** Optional icon hint — overrides the default level-based icon in the UI. */
+export type StatusIcon = "success" | "progress" | "error" | "searching" | "file" | "connection" | "info";
+
 export interface StatusMessage {
   id: string;
   text: string;
   level: StatusLevel;
+  icon?: StatusIcon;
   timestamp: number;
 }
 
