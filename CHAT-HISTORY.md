@@ -31,7 +31,7 @@ Enhanced the app with working model picker, real CLI integration, and Hub chat:
 Extended brainstorming session defining the full architecture:
 
 - **Terminology established**: Hub, Companion, Target App, App Profile, Source Mirror, Patches, Harness, Setup Agent, Companion Agent. Each term has a precise meaning in the Agentlication system.
-- **App Profile structure**: Each agentlicated app gets `~/.agentlication/apps/{app-name}/` with `profile.json`, `source/` (mirror), `patches/`, and `harness.md`.
+- **App Profile structure**: Each agentlicated app gets `~/.agentlication/apps/{app-name}/` with `profile.json`, `source/` (mirror), `patches/`, and `HARNESS.md`.
 - **Source Mirror concept**: When agentlicating, Agentlication checks for an open-source repo online, clones it version-matched to the installed binary. Gives the agent full source context without modifying the installed app.
 - **Runtime patches (Greasemonkey model)**: Key decision — patches are injected at runtime via CDP, NOT applied as source code diffs. This means Agentlication works on closed-source apps too. Patch files have metadata headers (target app, version, author, description).
 - **Hybrid patch format**: Raw JS by default for simplicity. Optional TSX with esbuild compile step for complex UI patches. Can piggyback on the target app's React instance if present.
@@ -39,7 +39,7 @@ Extended brainstorming session defining the full architecture:
 - **Floating chat panel**: Inspired by AI Music Video Studio — drag-to-dock on any window edge, resize, undock to separate window.
 - **Model picker with thinking modes**: Like T3 Code's extended thinking toggle.
 - **Hub Setup Agent**: The Hub screen has its own chat agent for onboarding and configuration.
-- **Per-app harness.md**: Each Companion Agent gets a harness file with app-specific instructions and accumulated learnings.
+- **Per-app HARNESS.md**: Each Companion Agent gets a harness file with app-specific instructions and accumulated learnings.
 - **ElevenLabs for speech output**: Added to voice capabilities alongside Deepgram for input.
 - **Producer Player as test target**: Using Ethan's own app for development testing.
 
@@ -69,12 +69,12 @@ Resumed Agentlication development by reloading full project context from prior s
 - **Session context reload**: Used session-reader subagent to load the complete Agentlication context (architecture, terminology, codebase state, prior decisions) from past conversations so work could continue seamlessly.
 - **Rename cleanup finalized**: Confirmed the "agentify" to "agentlicate" rename across all 12 affected files (source, prompts, docs) was complete and consistent. Verified the preload bridge bug from the previous session (stale `dist/preload.js` with old `isAppAgentified` name) was resolved after rebuilding with `tsc`.
 - **Next steps outlined**: Discussed the roadmap for the next development phase:
-  1. **App profile creation flow** — when user clicks "Agentlicate" on an app, create the `~/.agentlication/apps/{app-name}/` directory structure with `profile.json`, `harness.md`, empty `source/` and `patches/` dirs.
+  1. **App profile creation flow** — when user clicks "Agentlicate" on an app, create the `~/.agentlication/apps/{app-name}/` directory structure with `profile.json`, `HARNESS.md`, empty `source/` and `patches/` dirs.
   2. **CDP connection** — relaunch the target app with `--remote-debugging-port`, connect via chrome-remote-interface, verify DOM access.
   3. **Companion Agent** — attach the per-app chat agent with harness context, enabling the agent to read/manipulate the target app.
 - **App profile components explained**: Defined the four components that make up an App Profile:
   - `profile.json` — app metadata (name, version, path, CDP port, preferences)
-  - `harness.md` — agent instruction file with app-specific context and accumulated learnings
+  - `HARNESS.md` — agent instruction file with app-specific context and accumulated learnings
   - `source/` — source mirror (git clone of open-source repo, version-matched to installed binary)
   - `patches/` — runtime JS snippets injected via CDP at launch (Greasemonkey-style, not source diffs)
 
@@ -86,7 +86,7 @@ Implemented the full app profile creation flow that runs when the user clicks "A
 - **AppProfile type**: Added `AppProfile` interface to contracts with fields: name, slug, bundleId, appPath, installedVersion, cdpPort, sourceRepoUrl, dateAgentlicated.
 - **Profile creation logic** (main.ts):
   - Slugifies the app name (lowercase, hyphens, trimmed) for the directory name
-  - Creates `~/.agentlication/apps/{slug}/` with `profile.json`, `harness.md`, `source/`, `patches/`
+  - Creates `~/.agentlication/apps/{slug}/` with `profile.json`, `HARNESS.md`, `source/`, `patches/`
   - Reads bundle ID and version from macOS Info.plist via `defaults read`
   - Auto-assigns CDP ports starting from 9222, incrementing by scanning existing profiles
   - Returns existing profile if already created (idempotent)
@@ -143,3 +143,13 @@ Implemented the Companion Agent floating window that opens when connecting to a 
 - **CSS**: Added `.companion-app`, `.companion-titlebar`, `.companion-titlebar-drag/title/close`, `.companion-content` styles. Hides redundant chat header in companion mode. Compact layout for 400px width.
 - **AppPicker integration**: Calls `openCompanion(app.name)` after successful CDP connection in the Reconnect/Agentlicate flow.
 - **Cleanup**: `closeCompanionWindow()` called on `window-all-closed` event. Focus tracking subscription properly cleaned up.
+
+## 2026-03-26 — Rename harness.md to HARNESS.md
+
+Renamed all filename references from `harness.md` to `HARNESS.md` (uppercase) for consistency with project conventions (matching CLAUDE.md, IDEAS.md, etc.):
+
+- **Actual file**: Renamed `~/.agentlication/apps/producer-player/harness.md` to `HARNESS.md`
+- **Source code** (main.ts): Updated the comment and `fs.writeFileSync` call in the profile creation flow to write `HARNESS.md` instead of `harness.md`
+- **Documentation**: Updated all filename references in IDEAS.md (terminology section, directory tree) and CHAT-HISTORY.md (5 occurrences across architecture, profile creation, and next-steps sections)
+- **No changes to prose**: The concept name "harness" in descriptive text was left as-is; only the literal filename was uppercased
+- Verified both `npm run build:contracts` and `npm run build:electron` pass cleanly

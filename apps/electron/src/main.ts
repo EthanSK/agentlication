@@ -188,7 +188,7 @@ function registerIpcHandlers() {
         // Write profile.json
         fs.writeFileSync(profileFile, JSON.stringify(profile, null, 2), "utf-8");
 
-        // Write harness.md
+        // Write HARNESS.md
         const harnessContent = `# ${appData.name} — Companion Agent Harness
 
 ## About this app
@@ -200,7 +200,7 @@ ${appData.name} is an Electron application located at ${appData.path}.
 ## Learnings
 <!-- Accumulated knowledge from past interactions -->
 `;
-        fs.writeFileSync(path.join(profileDir, "harness.md"), harnessContent, "utf-8");
+        fs.writeFileSync(path.join(profileDir, "HARNESS.md"), harnessContent, "utf-8");
 
         return { success: true, profile };
       } catch (err) {
@@ -318,6 +318,45 @@ ${appData.name} is an Electron application located at ${appData.path}.
   ipcMain.handle(IPC.PROVIDER_CHECK, async () => {
     return agentService.checkProviders();
   });
+
+  // ── App preferences handlers ───────────────────────────────────
+  ipcMain.handle(
+    IPC.APP_UPDATE_PREFERENCES,
+    async (_event, appName: string, prefs: { preferredModel?: string; thinkingLevel?: string }) => {
+      try {
+        const slug = slugify(appName);
+        const profileFile = path.join(PROFILE_ROOT, slug, "profile.json");
+        if (!fs.existsSync(profileFile)) {
+          return { success: false, error: "Profile not found" };
+        }
+        const profile = JSON.parse(fs.readFileSync(profileFile, "utf-8")) as AppProfile;
+        if (prefs.preferredModel !== undefined) profile.preferredModel = prefs.preferredModel;
+        if (prefs.thinkingLevel !== undefined) profile.thinkingLevel = prefs.thinkingLevel;
+        fs.writeFileSync(profileFile, JSON.stringify(profile, null, 2), "utf-8");
+        return { success: true };
+      } catch (err) {
+        return { success: false, error: String(err) };
+      }
+    }
+  );
+
+  ipcMain.handle(
+    IPC.APP_GET_PREFERENCES,
+    async (_event, appName: string) => {
+      try {
+        const slug = slugify(appName);
+        const profileFile = path.join(PROFILE_ROOT, slug, "profile.json");
+        if (!fs.existsSync(profileFile)) return null;
+        const profile = JSON.parse(fs.readFileSync(profileFile, "utf-8")) as AppProfile;
+        return {
+          preferredModel: profile.preferredModel,
+          thinkingLevel: profile.thinkingLevel,
+        };
+      } catch {
+        return null;
+      }
+    }
+  );
 
   // ── Companion window handlers ──────────────────────────────────
   ipcMain.handle(IPC.COMPANION_OPEN, async (_event, appName: string) => {

@@ -150,6 +150,8 @@ export interface AppProfile {
   cdpPort: number;        // Auto-assigned CDP port
   sourceRepoUrl: string;  // Empty initially
   dateAgentlicated: string; // ISO date
+  preferredModel?: string;   // Per-app model override (e.g. "opus-4.6")
+  thinkingLevel?: string;    // Per-app thinking level override (e.g. "high")
 }
 
 // ── IPC channel names ──────────────────────────────────────────
@@ -178,6 +180,10 @@ export const IPC = {
 
   // Provider
   PROVIDER_CHECK: "provider:check",
+
+  // App preferences
+  APP_UPDATE_PREFERENCES: "app:update-preferences",
+  APP_GET_PREFERENCES: "app:get-preferences",
 
   // Companion window
   COMPANION_OPEN: "companion:open",

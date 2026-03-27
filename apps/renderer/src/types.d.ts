@@ -24,6 +24,8 @@ interface AgentlicationAPI {
   agentCancel: () => Promise<void>;
   onAgentEvent: (callback: (event: AgentEvent) => void) => () => void;
   checkProviders: () => Promise<ProviderStatusMap>;
+  updateAppPreferences: (appName: string, prefs: { preferredModel?: string; thinkingLevel?: string }) => Promise<{ success: boolean; error?: string }>;
+  getAppPreferences: (appName: string) => Promise<{ preferredModel?: string; thinkingLevel?: string } | null>;
   openCompanion: (appName: string) => Promise<void>;
   closeCompanion: () => Promise<void>;
 }

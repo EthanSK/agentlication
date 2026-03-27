@@ -9,6 +9,8 @@ const IPC = {
   APP_IS_AGENTLICATED: "app:is-agentlicated",
   APP_CREATE_PROFILE: "app:create-profile",
   APP_GET_PROFILE: "app:get-profile",
+  APP_UPDATE_PREFERENCES: "app:update-preferences",
+  APP_GET_PREFERENCES: "app:get-preferences",
   CDP_CONNECT: "cdp:connect",
   CDP_DISCONNECT: "cdp:disconnect",
   CDP_GET_DOM: "cdp:get-dom",
@@ -57,6 +59,12 @@ contextBridge.exposeInMainWorld("agentlication", {
 
   // Provider
   checkProviders: () => ipcRenderer.invoke(IPC.PROVIDER_CHECK),
+
+  // App preferences
+  updateAppPreferences: (appName: string, prefs: { preferredModel?: string; thinkingLevel?: string }) =>
+    ipcRenderer.invoke(IPC.APP_UPDATE_PREFERENCES, appName, prefs),
+  getAppPreferences: (appName: string) =>
+    ipcRenderer.invoke(IPC.APP_GET_PREFERENCES, appName),
 
   // Companion window
   openCompanion: (appName: string) => ipcRenderer.invoke(IPC.COMPANION_OPEN, appName),

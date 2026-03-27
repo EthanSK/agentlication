@@ -76,6 +76,43 @@ export default function App() {
   };
 
   // ── Companion mode ─────────────────────────────────────────────
+  // Per-app model/thinking state for companion
+  const [companionModel, setCompanionModel] = useState(selectedModel);
+  const [companionThinking, setCompanionThinking] = useState(thinkingLevel);
+  const [companionPrefsLoaded, setCompanionPrefsLoaded] = useState(false);
+
+  // Load per-app preferences when companion opens
+  useEffect(() => {
+    if (!isCompanionMode || !companionAppName || companionPrefsLoaded) return;
+    (async () => {
+      try {
+        const prefs = await window.agentlication?.getAppPreferences(companionAppName);
+        if (prefs) {
+          if (prefs.preferredModel) setCompanionModel(prefs.preferredModel);
+          if (prefs.thinkingLevel) setCompanionThinking(prefs.thinkingLevel);
+        }
+      } catch {
+        // Use defaults
+      }
+      setCompanionPrefsLoaded(true);
+    })();
+  }, [isCompanionMode, companionAppName, companionPrefsLoaded]);
+
+  // Persist companion model changes
+  const handleCompanionModelChange = (modelId: string) => {
+    setCompanionModel(modelId);
+    if (companionAppName) {
+      window.agentlication?.updateAppPreferences(companionAppName, { preferredModel: modelId });
+    }
+  };
+
+  const handleCompanionThinkingChange = (level: string) => {
+    setCompanionThinking(level);
+    if (companionAppName) {
+      window.agentlication?.updateAppPreferences(companionAppName, { thinkingLevel: level });
+    }
+  };
+
   if (isCompanionMode) {
     const companionTarget: TargetApp = {
       name: companionAppName!,
@@ -93,18 +130,27 @@ export default function App() {
           <div className="companion-titlebar-drag">
             <span className="companion-titlebar-title">{companionAppName}</span>
           </div>
-          <button
-            className="companion-titlebar-close"
-            onClick={handleCloseCompanion}
-            title="Close companion"
-          >
-            {"\u2715"}
-          </button>
+          <div className="companion-titlebar-controls">
+            <ModelPicker
+              selected={companionModel}
+              onChange={handleCompanionModelChange}
+              providerStatus={providerStatus}
+              thinkingLevel={companionThinking}
+              onThinkingLevelChange={handleCompanionThinkingChange}
+            />
+            <button
+              className="companion-titlebar-close"
+              onClick={handleCloseCompanion}
+              title="Close companion"
+            >
+              {"\u2715"}
+            </button>
+          </div>
         </div>
         <div className="companion-content">
           <ChatPanel
             targetApp={companionTarget}
-            selectedModel={selectedModel}
+            selectedModel={companionModel}
             providerStatus={providerStatus}
             placeholder={`Chat with ${companionAppName} agent...`}
           />

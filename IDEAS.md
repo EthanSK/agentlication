@@ -15,7 +15,7 @@
 - **App Profile** — per-app config + source + patches stored at `~/.agentlication/apps/{app-name}/`
 - **Source Mirror** — local clone of the target app's open-source repo, version-matched to the installed binary
 - **Patches** — runtime JS/TSX snippets injected via CDP (not source code diffs); Greasemonkey-style
-- **Harness** (`harness.md`) — per-app instruction file for the Companion Agent with app-specific context and learnings
+- **Harness** (`HARNESS.md`) — per-app instruction file for the Companion Agent with app-specific context and learnings
 - **Setup Agent** — the Hub's own chat agent for initial configuration, onboarding, troubleshooting
 - **Companion Agent** — the per-app chat agent that understands the target app's DOM, state, and harness
 
@@ -37,7 +37,7 @@
   profile.json        # app metadata, version, CDP port, preferences
   source/             # source mirror — git clone of open-source repo, version-matched
   patches/            # user's runtime patches (JS/TSX files with metadata headers)
-  harness.md          # per-app agent instructions, accumulates learnings
+  HARNESS.md          # per-app agent instructions, accumulates learnings
 ```
 
 ### Source Mirror
