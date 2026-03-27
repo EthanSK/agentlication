@@ -96,3 +96,28 @@ Implemented the full app profile creation flow that runs when the user clicks "A
   - After profile creation, the app immediately shows the green "Agentlicated" badge
   - Button text changes to "Reconnect" for already-agentlicated apps
 - **Tested**: Successfully agentlicated Producer Player — profile created at `~/.agentlication/apps/producer-player/` with correct metadata (bundleId: com.ethansk.producerplayer, version: 1.1.6, cdpPort: 9222).
+
+## 2026-03-26 — CDP Connection Flow (Step 2)
+
+Implemented the full CDP connection flow — when clicking "Reconnect" on an agentlicated app, the system kills, relaunches with CDP debugging enabled, connects, and reads page info:
+
+- **CdpService rewrite** (`apps/electron/src/cdp-service.ts`):
+  - `connect(appPath, cdpPort)` now handles the full flow: kill running instance, relaunch with `--remote-debugging-port`, poll `/json/version` until CDP is ready, connect via chrome-remote-interface, pick the main page target
+  - `disconnect()` cleanly closes the CDP session
+  - `isConnected()` check for active connection status
+  - `getPageInfo()` gathers title, URL, detected framework (React/Vue/Angular via devtools hooks and DOM markers), localStorage keys, and brief DOM structure summary — all in a single `Runtime.evaluate` call
+  - `killApp()` uses `execFileSync("pkill")` and `osascript` quit for graceful shutdown (safe against command injection)
+  - `launchWithCdp()` uses `spawn("open", ["-a", appPath, "--args", ...])` for macOS .app bundles
+  - `waitForCdp()` polls `http://localhost:<port>/json/version` with 500ms intervals, up to 15s timeout
+- **New IPC channels**:
+  - `CDP_DISCONNECT` (`cdp:disconnect`) — disconnect from target
+  - `CDP_GET_INFO` (`cdp:get-info`) — get page info (title, URL, framework, localStorage keys, DOM structure)
+  - `APP_GET_PROFILE` (`app:get-profile`) — retrieve an app's profile by name (needed to get cdpPort for reconnection)
+- **Contracts updated**: Added `CdpPageInfo` interface (title, url, framework, localStorageKeys, documentStructure), `CdpConnectionStatus` type, new IPC constants
+- **Preload updated**: Added `cdpDisconnect()`, `cdpGetInfo()`, `getAppProfile()` to the exposed API; `cdpConnect()` now takes `(appPath, cdpPort)` instead of just `(port)`
+- **AppPicker UI updates**:
+  - Connection status dot next to app name (green=connected, yellow+pulse=connecting, red=error)
+  - CDP info row showing page title, detected framework badge, and URL when connected
+  - Button text shows "Connecting..." during the connect flow
+  - Fetches app profile to get cdpPort before connecting
+- **CSS**: New styles for `.cdp-status-dot`, `.cdp-info`, `.cdp-info-badge`, `.cdp-info-url` with animations

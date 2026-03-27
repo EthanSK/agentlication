@@ -127,6 +127,18 @@ export interface CdpTarget {
   type: string;
 }
 
+/** Info gathered after connecting to a target app via CDP. */
+export interface CdpPageInfo {
+  title: string;
+  url: string;
+  framework: string | null; // "react" | "vue" | "angular" | null
+  localStorageKeys: string[];
+  documentStructure: string; // brief summary of top-level DOM tags
+}
+
+/** Status of a CDP connection for a given app slug. */
+export type CdpConnectionStatus = "connected" | "disconnected" | "connecting" | "error";
+
 // ── App profile types ─────────────────────────────────────────
 
 export interface AppProfile {
@@ -148,12 +160,15 @@ export const IPC = {
   LAUNCH_APP: "app:launch",
   APP_IS_AGENTLICATED: "app:is-agentlicated",
   APP_CREATE_PROFILE: "app:create-profile",
+  APP_GET_PROFILE: "app:get-profile",
 
   // CDP
   CDP_CONNECT: "cdp:connect",
+  CDP_DISCONNECT: "cdp:disconnect",
   CDP_GET_DOM: "cdp:get-dom",
   CDP_EVALUATE: "cdp:evaluate",
   CDP_LIST_TARGETS: "cdp:list-targets",
+  CDP_GET_INFO: "cdp:get-info",
 
   // Agent
   AGENT_SEND: "agent:send",

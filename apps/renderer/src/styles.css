@@ -287,6 +287,83 @@ body {
   margin-right: 8px;
 }
 
+/* ── CDP Connection Status ──────────────────────────────────── */
+
+.app-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cdp-status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.cdp-status-connected {
+  background: var(--success);
+  box-shadow: 0 0 6px rgba(77, 255, 136, 0.5);
+}
+
+.cdp-status-connecting {
+  background: #fbbf24;
+  box-shadow: 0 0 6px rgba(251, 191, 36, 0.5);
+  animation: pulse-dot 1.2s infinite;
+}
+
+.cdp-status-error {
+  background: var(--error);
+  box-shadow: 0 0 6px rgba(255, 77, 77, 0.5);
+}
+
+.cdp-status-disconnected {
+  background: var(--text-muted);
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.cdp-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.cdp-info-item {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.cdp-info-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  background: rgba(124, 108, 255, 0.15);
+  color: var(--accent);
+  border: 1px solid rgba(124, 108, 255, 0.25);
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.cdp-info-url {
+  font-size: 10px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+  font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+}
+
 .loading, .empty {
   text-align: center;
   padding: 40px;

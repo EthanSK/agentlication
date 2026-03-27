@@ -4,7 +4,7 @@ import * as fs from "fs";
 import * as os from "os";
 import { execFileSync } from "child_process";
 import { IPC } from "@agentlication/contracts";
-import type { AppProfile, TargetApp } from "@agentlication/contracts";
+import type { AppProfile, TargetApp, CdpPageInfo } from "@agentlication/contracts";
 import { AgentService } from "./agent-service";
 import { CdpService } from "./cdp-service";
 import { scanElectronApps, launchAppWithDebugging } from "./app-scanner";
@@ -194,14 +194,36 @@ ${appData.name} is an Electron application located at ${appData.path}.
     }
   );
 
-  // Launch target app with debugging
+  // Launch target app with debugging (legacy — CDP_CONNECT is preferred)
   ipcMain.handle(IPC.LAUNCH_APP, async (_event, appPath: string) => {
     return launchAppWithDebugging(appPath);
   });
 
-  // CDP operations
-  ipcMain.handle(IPC.CDP_CONNECT, async (_event, port: number) => {
-    return cdpService.connect(port);
+  // Get an app's profile by name
+  ipcMain.handle(IPC.APP_GET_PROFILE, async (_event, appName: string): Promise<AppProfile | null> => {
+    const slug = slugify(appName);
+    const profileFile = path.join(PROFILE_ROOT, slug, "profile.json");
+    try {
+      if (fs.existsSync(profileFile)) {
+        return JSON.parse(fs.readFileSync(profileFile, "utf-8")) as AppProfile;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  });
+
+  // CDP operations — connect takes appPath + port, kills/relaunches the target
+  ipcMain.handle(
+    IPC.CDP_CONNECT,
+    async (_event, appPath: string, cdpPort: number) => {
+      return cdpService.connect(appPath, cdpPort);
+    }
+  );
+
+  ipcMain.handle(IPC.CDP_DISCONNECT, async () => {
+    await cdpService.disconnect();
+    return { success: true };
   });
 
   ipcMain.handle(IPC.CDP_GET_DOM, async () => {
@@ -214,6 +236,15 @@ ${appData.name} is an Electron application located at ${appData.path}.
 
   ipcMain.handle(IPC.CDP_LIST_TARGETS, async () => {
     return cdpService.listTargets();
+  });
+
+  ipcMain.handle(IPC.CDP_GET_INFO, async (): Promise<CdpPageInfo | null> => {
+    if (!cdpService.isConnected()) return null;
+    try {
+      return await cdpService.getPageInfo();
+    } catch {
+      return null;
+    }
   });
 
   // Agent operations — Companion chat (with CDP context)

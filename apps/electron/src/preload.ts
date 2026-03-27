@@ -8,10 +8,13 @@ const IPC = {
   LAUNCH_APP: "app:launch",
   APP_IS_AGENTLICATED: "app:is-agentlicated",
   APP_CREATE_PROFILE: "app:create-profile",
+  APP_GET_PROFILE: "app:get-profile",
   CDP_CONNECT: "cdp:connect",
+  CDP_DISCONNECT: "cdp:disconnect",
   CDP_GET_DOM: "cdp:get-dom",
   CDP_EVALUATE: "cdp:evaluate",
   CDP_LIST_TARGETS: "cdp:list-targets",
+  CDP_GET_INFO: "cdp:get-info",
   AGENT_SEND: "agent:send",
   AGENT_SEND_HUB: "agent:send-hub",
   AGENT_EVENT: "agent:event",
@@ -27,12 +30,16 @@ contextBridge.exposeInMainWorld("agentlication", {
   isAppAgentlicated: (appName: string) => ipcRenderer.invoke(IPC.APP_IS_AGENTLICATED, appName),
   createAppProfile: (appData: { name: string; path: string }) =>
     ipcRenderer.invoke(IPC.APP_CREATE_PROFILE, appData),
+  getAppProfile: (appName: string) => ipcRenderer.invoke(IPC.APP_GET_PROFILE, appName),
 
   // CDP
-  cdpConnect: (port: number) => ipcRenderer.invoke(IPC.CDP_CONNECT, port),
+  cdpConnect: (appPath: string, cdpPort: number) =>
+    ipcRenderer.invoke(IPC.CDP_CONNECT, appPath, cdpPort),
+  cdpDisconnect: () => ipcRenderer.invoke(IPC.CDP_DISCONNECT),
   cdpGetDOM: () => ipcRenderer.invoke(IPC.CDP_GET_DOM),
   cdpEvaluate: (js: string) => ipcRenderer.invoke(IPC.CDP_EVALUATE, js),
   cdpListTargets: () => ipcRenderer.invoke(IPC.CDP_LIST_TARGETS),
+  cdpGetInfo: () => ipcRenderer.invoke(IPC.CDP_GET_INFO),
 
   // Agent
   agentSend: (message: string, modelId: string) =>
