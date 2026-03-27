@@ -138,6 +138,87 @@
 - For non-Electron: convert to Electron (agent-assisted) or use accessibility API
 - Lightweight app pulls latest code, saves locally, applies custom UIs from branches, merges using agent
 
+## Agentlication Smoke Test / Ping Test
+
+- During the agentlication flow, run a quick smoke test to verify the CDP connection actually works
+- Test DOM readability: can the agent read page title, URL, basic DOM structure?
+- Test interactivity: click a button, verify the response (e.g., element state change)
+- Catches broken CDP connections, apps that block automation, or apps with unusual setups
+- Could display pass/fail results in the companion panel before the agent starts working
+
+## Non-Electron App Support (Accessibility API)
+
+- macOS Accessibility API (AXUIElement) as fallback for non-Electron native apps
+- Limited capabilities compared to CDP: can click buttons, type text, read UI element labels
+- No DOM access, no JS execution, no framework detection — purely visual/structural
+- Could still be useful for simple automation tasks (click this, type that)
+- Explore combining with screenshots + vision model for richer understanding
+- AXUIElement tree gives element hierarchy, roles, labels, values, positions
+
+## Chat Status Feed
+
+- Show all agentlication steps as a status feed in the companion panel
+- Real-time display: "Connecting to CDP...", "Reading DOM...", "Detecting framework...", "Loading harness..."
+- Each step shows pass/fail/in-progress state
+- Gives the user visibility into what the agent is doing before the chat becomes interactive
+- Could also show ongoing agent actions (e.g., "Injecting patch...", "Reading localStorage...")
+
+## Source Repo Auto-Discovery
+
+- When agentlicating an app, automatically search for its open-source repository
+- Use GitHub API or `gh` CLI to search by app name, bundle ID, or known org
+- Match the installed version to a git tag or release for version-accurate source mirror
+- Store discovered repo URL in profile.json for future reference
+- Already have the `find-source-repo.md` prompt — this extends it with automated execution
+
+## Per-App Model Picker and Thinking Level Persistence
+
+- Each companion window has its own model and thinking level selection
+- Persisted in the app's `profile.json` as `preferredModel` and `thinkingLevel`
+- Different apps may benefit from different model sizes (simple apps = small model, complex apps = large)
+- Settings survive companion window close/reopen and app restarts
+
+## Companion Window as NSPanel
+
+- Companion window uses Electron BrowserWindow `type: "panel"` which maps to macOS NSPanel
+- NSPanel floats above normal windows without stealing focus from the target app
+- Combined with `alwaysOnTop: true` at `"floating"` level for proper layering
+- User can interact with the target app while the companion panel is visible
+
+## Future: CDP Injection Mode
+
+- Instead of a separate companion window, inject the chat panel directly into the target app's DOM via CDP
+- Would appear as a native part of the target app's UI
+- Eliminates window management complexity (positioning, focus tracking, show/hide)
+- Could use the target app's own CSS variables for seamless visual integration
+- Trade-off: more fragile (target app DOM changes could break it), harder to debug
+- Start with separate window (current approach), migrate to injection as an advanced option
+
+## Re-Agentlication After App Updates
+
+- When a target app updates to a new version, re-run the agentlication flow
+- Update the source mirror to the new version tag
+- Re-run smoke test to verify CDP still works
+- Check if existing patches are still compatible
+- Update `installedVersion` in profile.json
+- Could auto-detect updates by monitoring app version on launch
+
+## Interactive Element Mapping
+
+- During agentlication, map all interactive elements in the target app
+- Buttons, inputs, links, dropdowns, toggles, sliders, etc.
+- Store as a structured toolkit the agent can reference (element ID/selector, label, action type)
+- Gives the agent a "menu" of available actions without needing to scan the full DOM each time
+- Could be refreshed periodically or on page navigation
+
+## Keyboard Shortcuts and Menu Structure Extraction
+
+- During setup, extract the target app's keyboard shortcuts and menu bar structure
+- Read from the app's menu bar via Electron's `Menu.getApplicationMenu()` or DOM inspection
+- Parse keyboard shortcut definitions from the app's source code or help documentation
+- Store in HARNESS.md or a separate `shortcuts.json` for agent reference
+- Enables the agent to use keyboard shortcuts instead of clicking (faster, more reliable)
+
 ## Open Questions
 
 - Local installer vs cloud build queue?

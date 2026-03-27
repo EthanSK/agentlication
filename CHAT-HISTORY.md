@@ -167,3 +167,21 @@ Added a model picker and thinking mode selector to the Companion Agent window, w
 - **Companion state management**: Companion mode in App.tsx uses separate `companionModel` and `companionThinking` state variables (independent from hub state). On mount, loads persisted preferences from profile.json. On change, persists immediately.
 - **UI layout**: Companion titlebar shows `[App Name] [Model Picker] [Dot] [Thinking Picker] [Close]`. New `.companion-titlebar-controls` container with no-drag region. Model picker dropdown appears correctly over the companion content.
 - **Persistence verified**: Changed model to Sonnet 4.5/Medium via IPC, closed companion, reopened — correctly loaded the saved preferences from profile.json
+
+## 2026-03-27 — Model Picker, Harness Rename, Architecture Discussions
+
+Continued Agentlication development with companion enhancements, naming decisions, and extensive architecture brainstorming:
+
+- **Model picker in companion**: Added the ModelPicker component to the companion window's custom titlebar with per-app persistence. Each companion saves its preferred model and thinking level to the app's `profile.json`, independent from the hub's settings. Settings survive window close/reopen.
+- **HARNESS.md uppercase rename**: Renamed all references from `harness.md` to `HARNESS.md` for consistency with other project convention files (CLAUDE.md, IDEAS.md, etc.). Updated source code, documentation, and the actual file on disk.
+- **Harness vs agents naming discussion**: Discussed whether the per-app instruction file should be called `harness.md` or `agents.md`. Decided on HARNESS.md — "harness" is the project's unique terminology and avoids confusion with the project-level AGENTS.md.
+- **Chat status feed design**: Designed a real-time status feed for the companion panel showing agentlication steps (CDP connecting, DOM reading, framework detection, harness loading) with pass/fail/in-progress states. Gives users visibility into what the agent is doing before chat becomes interactive.
+- **Source repo scanning architecture**: Discussed automatic open-source repo discovery during agentlication using GitHub API or `gh` CLI. Match installed app version to git tags for version-accurate source mirrors. Already have the `find-source-repo.md` prompt file — extending it with automated execution.
+- **Ping/smoke test concept**: Proposed running a quick verification during agentlication to confirm CDP actually works — test DOM readability, click a button, verify response. Catches broken connections or apps that block automation before the user starts chatting.
+- **Non-Electron app support**: Discussed macOS Accessibility API (AXUIElement) as a fallback for native (non-Electron) apps. Limited to click/type/read-labels (no DOM, no JS execution), but could be combined with screenshots + vision models for richer understanding.
+- **Companion window as NSPanel**: Confirmed the companion uses Electron's `type: "panel"` (macOS NSPanel) for float-without-focus-steal behavior, combined with `alwaysOnTop` at floating level.
+- **Future CDP injection mode**: Explored injecting the chat panel directly into the target app's DOM via CDP instead of a separate window. Would provide seamless integration but is more fragile. Keeping separate window as the primary approach, injection as a future advanced option.
+- **Re-agentlication after updates**: Discussed automatically re-running the agentlication flow when a target app updates — refresh source mirror, re-run smoke test, check patch compatibility.
+- **Interactive element mapping**: Proposed mapping all interactive elements during agentlication to build a structured agent toolkit (element selectors, labels, action types).
+- **Keyboard shortcuts extraction**: Extract the target app's shortcuts and menu structure during setup for agent reference — enables keyboard-driven automation.
+- **File update confirmations**: Added a rule to the agentlication-builder skill requiring a confirmation line at the end of every Telegram reply when IDEAS.md or CHAT-HISTORY.md is updated, so Ethan always knows what was captured.
