@@ -61,3 +61,19 @@ Renamed all instances of "agentify"/"Agentify"/"agentified"/"Agentified"/"agenti
 ## 2026-03-26 — Fix Stale Build Artifacts After Rename
 
 Fixed `TypeError: window.agentlication.isAppAgentlicated is not a function` caused by stale compiled JavaScript in `apps/electron/dist/`. The previous rename commit updated all TypeScript source files but did not rebuild the electron dist. Since Electron loads the compiled `dist/preload.js` (not the `.ts` source), the runtime was still exposing the old `isAppAgentified` method name while the renderer was calling the new `isAppAgentlicated`. Fix: rebuilt electron TypeScript (`npm run build:electron`) to regenerate dist files with the correct names.
+
+## 2026-03-27 — Context Reload, Rename Wrap-up, Next Steps Discussion
+
+Resumed Agentlication development by reloading full project context from prior sessions:
+
+- **Session context reload**: Used session-reader subagent to load the complete Agentlication context (architecture, terminology, codebase state, prior decisions) from past conversations so work could continue seamlessly.
+- **Rename cleanup finalized**: Confirmed the "agentify" to "agentlicate" rename across all 12 affected files (source, prompts, docs) was complete and consistent. Verified the preload bridge bug from the previous session (stale `dist/preload.js` with old `isAppAgentified` name) was resolved after rebuilding with `tsc`.
+- **Next steps outlined**: Discussed the roadmap for the next development phase:
+  1. **App profile creation flow** — when user clicks "Agentlicate" on an app, create the `~/.agentlication/apps/{app-name}/` directory structure with `profile.json`, `harness.md`, empty `source/` and `patches/` dirs.
+  2. **CDP connection** — relaunch the target app with `--remote-debugging-port`, connect via chrome-remote-interface, verify DOM access.
+  3. **Companion Agent** — attach the per-app chat agent with harness context, enabling the agent to read/manipulate the target app.
+- **App profile components explained**: Defined the four components that make up an App Profile:
+  - `profile.json` — app metadata (name, version, path, CDP port, preferences)
+  - `harness.md` — agent instruction file with app-specific context and accumulated learnings
+  - `source/` — source mirror (git clone of open-source repo, version-matched to installed binary)
+  - `patches/` — runtime JS snippets injected via CDP at launch (Greasemonkey-style, not source diffs)
