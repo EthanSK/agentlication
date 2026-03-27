@@ -1,8 +1,8 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, dialog, systemPreferences } from "electron";
 import * as path from "path";
 import * as fs from "fs";
 import * as os from "os";
-import { execFileSync } from "child_process";
+import { execFileSync, execSync } from "child_process";
 import { IPC } from "@agentlication/contracts";
 import type { AppProfile, TargetApp, CdpPageInfo } from "@agentlication/contracts";
 import { AgentService } from "./agent-service";
@@ -10,6 +10,9 @@ import { CdpService } from "./cdp-service";
 import { scanElectronApps, launchAppWithDebugging } from "./app-scanner";
 
 let mainWindow: BrowserWindow | null = null;
+let companionWindow: BrowserWindow | null = null;
+let companionTargetAppName: string | null = null;
+let focusSubscriptionId: number | null = null;
 const cdpService = new CdpService();
 const agentService = new AgentService(cdpService);
 
@@ -88,6 +91,18 @@ function readPlistKey(appPath: string, key: string): string {
     }).trim();
   } catch {
     return "";
+  }
+}
+
+/** Check if a target app is currently running by its .app path. */
+function isAppRunning(appPath: string): boolean {
+  try {
+    const appName = appPath.split("/").pop()?.replace(".app", "") || "";
+    if (!appName) return false;
+    execFileSync("pgrep", ["-f", appName], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -217,6 +232,21 @@ ${appData.name} is an Electron application located at ${appData.path}.
   ipcMain.handle(
     IPC.CDP_CONNECT,
     async (_event, appPath: string, cdpPort: number) => {
+      // If the target app is already running, ask the user to confirm restart
+      if (isAppRunning(appPath)) {
+        const appName = appPath.split("/").pop()?.replace(".app", "") || "the app";
+        const { response } = await dialog.showMessageBox(mainWindow!, {
+          type: "question",
+          buttons: ["Quit & Restart", "Cancel"],
+          defaultId: 0,
+          cancelId: 1,
+          title: "Restart Required",
+          message: `Do you want to quit and restart ${appName}? It will be relaunched with CDP enabled.`,
+        });
+        if (response === 1) {
+          return { success: false, error: "User cancelled restart" };
+        }
+      }
       return cdpService.connect(appPath, cdpPort);
     }
   );
@@ -282,6 +312,194 @@ ${appData.name} is an Electron application located at ${appData.path}.
   ipcMain.handle(IPC.PROVIDER_CHECK, async () => {
     return agentService.checkProviders();
   });
+
+  // ── Companion window handlers ──────────────────────────────────
+  ipcMain.handle(IPC.COMPANION_OPEN, async (_event, appName: string) => {
+    openCompanionWindow(appName);
+  });
+
+  ipcMain.handle(IPC.COMPANION_CLOSE, async () => {
+    closeCompanionWindow();
+  });
+}
+
+// ── Companion Window ──────────────────────────────────────────────
+
+/** Get target app window bounds using Swift/CoreGraphics. */
+function getTargetAppBounds(appName: string): { x: number; y: number; width: number; height: number } | null {
+  try {
+    const swift = `
+import CoreGraphics
+let windows = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as! [[String: Any]]
+for w in windows {
+    let owner = w[kCGWindowOwnerName as String] as? String ?? ""
+    let bounds = w[kCGWindowBounds as String] as? [String: Any] ?? [:]
+    let width = bounds["Width"] as? Int ?? 0
+    let height = bounds["Height"] as? Int ?? 0
+    let x = bounds["X"] as? Int ?? 0
+    let y = bounds["Y"] as? Int ?? 0
+    if owner == "${appName.replace(/"/g, '\\"')}" && width > 100 && height > 100 {
+        print("\\(x),\\(y),\\(width),\\(height)")
+        break
+    }
+}
+`;
+    const result = execSync(`swift -e '${swift.replace(/'/g, "'\\''")}'`, {
+      encoding: "utf-8",
+      timeout: 5000,
+      stdio: ["pipe", "pipe", "pipe"],
+    }).trim();
+
+    if (!result) return null;
+    const [x, y, width, height] = result.split(",").map(Number);
+    if (isNaN(x) || isNaN(y) || isNaN(width) || isNaN(height)) return null;
+    return { x, y, width, height };
+  } catch {
+    return null;
+  }
+}
+
+function openCompanionWindow(appName: string) {
+  // If already open for the same app, just show it
+  if (companionWindow && !companionWindow.isDestroyed()) {
+    if (companionTargetAppName === appName) {
+      companionWindow.show();
+      return;
+    }
+    // Different app — close old window first
+    closeCompanionWindow();
+  }
+
+  companionTargetAppName = appName;
+
+  companionWindow = new BrowserWindow({
+    width: 400,
+    height: 600,
+    minWidth: 300,
+    minHeight: 400,
+    type: "panel",
+    alwaysOnTop: true,
+    frame: false,
+    titleBarStyle: "hiddenInset",
+    backgroundColor: "#0a0a0a",
+    show: false,
+    skipTaskbar: true,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webviewTag: false,
+    },
+  });
+
+  // Set floating level so it stays above regular windows
+  companionWindow.setAlwaysOnTop(true, "floating");
+
+  // Load renderer with companion mode query params
+  const encodedAppName = encodeURIComponent(appName);
+  if (isDev) {
+    const devUrl = process.env.RENDERER_DEV_URL ?? "http://localhost:5173";
+    companionWindow.loadURL(`${devUrl}?mode=companion&app=${encodedAppName}`);
+  } else {
+    const rendererPath = path.join(
+      process.resourcesPath,
+      "renderer",
+      "index.html"
+    );
+    companionWindow.loadFile(rendererPath, {
+      query: { mode: "companion", app: appName },
+    });
+  }
+
+  // Position to the right of the target app
+  companionWindow.once("ready-to-show", () => {
+    if (!companionWindow || companionWindow.isDestroyed()) return;
+
+    const bounds = getTargetAppBounds(appName);
+    if (bounds) {
+      companionWindow.setPosition(bounds.x + bounds.width, bounds.y);
+      // Match target app height if reasonable
+      const targetHeight = Math.max(400, Math.min(bounds.height, 900));
+      companionWindow.setSize(400, targetHeight);
+    }
+
+    companionWindow.show();
+  });
+
+  companionWindow.on("closed", () => {
+    companionWindow = null;
+    companionTargetAppName = null;
+    stopFocusTracking();
+  });
+
+  // Forward agent events to companion window too
+  const originalSend = mainWindow?.webContents.send.bind(mainWindow?.webContents);
+  if (originalSend) {
+    const patchedSend = (channel: string, ...args: unknown[]) => {
+      originalSend(channel, ...args);
+      if (companionWindow && !companionWindow.isDestroyed() && channel === IPC.AGENT_EVENT) {
+        companionWindow.webContents.send(channel, ...args);
+      }
+    };
+    // We need to patch event forwarding in agent handlers instead
+  }
+
+  // Start focus tracking
+  startFocusTracking(appName);
+}
+
+function closeCompanionWindow() {
+  stopFocusTracking();
+  if (companionWindow && !companionWindow.isDestroyed()) {
+    companionWindow.close();
+  }
+  companionWindow = null;
+  companionTargetAppName = null;
+}
+
+function startFocusTracking(targetAppName: string) {
+  stopFocusTracking();
+
+  // Use macOS workspace notifications to track app focus changes
+  if (process.platform === "darwin") {
+    try {
+      focusSubscriptionId = systemPreferences.subscribeWorkspaceNotification(
+        "NSWorkspaceDidActivateApplicationNotification",
+        (_event: string, _userInfo: unknown, info: Record<string, unknown>) => {
+          if (!companionWindow || companionWindow.isDestroyed()) return;
+
+          const activeApp = (info as Record<string, unknown>)?.["NSWorkspaceApplicationKey"] as Record<string, unknown> | undefined;
+          const activeName = (activeApp as Record<string, unknown>)?.["NSApplicationName"] as string | undefined;
+
+          // Show companion when the target app, Agentlication, or Electron (dev mode) is focused
+          const shouldShow =
+            activeName === targetAppName ||
+            activeName === "Agentlication" ||
+            activeName === "Electron";
+
+          if (shouldShow) {
+            companionWindow?.show();
+          } else {
+            companionWindow?.hide();
+          }
+        }
+      );
+    } catch {
+      // Focus tracking not available — companion stays visible
+    }
+  }
+}
+
+function stopFocusTracking() {
+  if (focusSubscriptionId !== null && process.platform === "darwin") {
+    try {
+      systemPreferences.unsubscribeWorkspaceNotification(focusSubscriptionId);
+    } catch {
+      // ignore
+    }
+    focusSubscriptionId = null;
+  }
 }
 
 // ── App lifecycle ──────────────────────────────────────────────

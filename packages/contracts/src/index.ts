@@ -178,4 +178,8 @@ export const IPC = {
 
   // Provider
   PROVIDER_CHECK: "provider:check",
+
+  // Companion window
+  COMPANION_OPEN: "companion:open",
+  COMPANION_CLOSE: "companion:close",
 } as const;

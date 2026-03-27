@@ -20,6 +20,8 @@ const IPC = {
   AGENT_EVENT: "agent:event",
   AGENT_CANCEL: "agent:cancel",
   PROVIDER_CHECK: "provider:check",
+  COMPANION_OPEN: "companion:open",
+  COMPANION_CLOSE: "companion:close",
 } as const;
 
 // Expose a safe API to the renderer process
@@ -55,4 +57,8 @@ contextBridge.exposeInMainWorld("agentlication", {
 
   // Provider
   checkProviders: () => ipcRenderer.invoke(IPC.PROVIDER_CHECK),
+
+  // Companion window
+  openCompanion: (appName: string) => ipcRenderer.invoke(IPC.COMPANION_OPEN, appName),
+  closeCompanion: () => ipcRenderer.invoke(IPC.COMPANION_CLOSE),
 });

@@ -24,6 +24,8 @@ interface AgentlicationAPI {
   agentCancel: () => Promise<void>;
   onAgentEvent: (callback: (event: AgentEvent) => void) => () => void;
   checkProviders: () => Promise<ProviderStatusMap>;
+  openCompanion: (appName: string) => Promise<void>;
+  closeCompanion: () => Promise<void>;
 }
 
 declare global {

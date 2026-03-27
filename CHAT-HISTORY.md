@@ -121,3 +121,11 @@ Implemented the full CDP connection flow — when clicking "Reconnect" on an age
   - Button text shows "Connecting..." during the connect flow
   - Fetches app profile to get cdpPort before connecting
 - **CSS**: New styles for `.cdp-status-dot`, `.cdp-info`, `.cdp-info-badge`, `.cdp-info-url` with animations
+
+## 2026-03-26 — Reconnect Confirmation Dialog
+
+Added a confirmation dialog when the user clicks "Reconnect" on an agentlicated app and the target app is already running:
+
+- **isAppRunning helper** (main.ts): Uses `pgrep -f` via `execFileSync` to check if the target app process is currently running. Extracts the app name from the `.app` path and matches against running processes.
+- **Confirmation dialog** (main.ts): In the `CDP_CONNECT` IPC handler, before proceeding with the kill-relaunch-connect flow, checks if the target app is running. If so, shows an Electron `dialog.showMessageBox` with "Quit & Restart" and "Cancel" buttons, explaining that the app will be relaunched with CDP enabled. If the user cancels, returns early with `{ success: false, error: "User cancelled restart" }` without touching the target app.
+- **Imports**: Added `dialog` to the Electron imports in main.ts.
