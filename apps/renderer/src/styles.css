@@ -1009,6 +1009,96 @@ body {
   word-break: break-all;
 }
 
+/* ── Companion Window ─────────────────────────────────────────── */
+
+.companion-app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--bg-primary);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.companion-titlebar {
+  display: flex;
+  align-items: center;
+  height: 36px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  padding: 0 8px 0 0;
+  flex-shrink: 0;
+}
+
+.companion-titlebar-drag {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  height: 100%;
+  -webkit-app-region: drag;
+  min-width: 0;
+  padding-left: 72px; /* space for macOS traffic lights */
+}
+
+.companion-titlebar-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.companion-titlebar-close {
+  -webkit-app-region: no-drag;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+
+.companion-titlebar-close:hover {
+  background: rgba(255, 77, 77, 0.2);
+  color: var(--error);
+}
+
+.companion-content {
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.companion-content .chat-panel {
+  height: 100%;
+}
+
+/* Hide the chat header in companion mode — titlebar already shows the name */
+.companion-content .chat-header {
+  display: none;
+}
+
+/* Adjust chat layout for narrow companion window */
+.companion-content .chat-messages {
+  padding: 12px 10px;
+}
+
+.companion-content .chat-message {
+  max-width: 90%;
+}
+
+.companion-content .chat-composer {
+  padding: 8px 10px;
+}
+
+.companion-content .chat-composer textarea {
+  font-size: 13px;
+}
+
 /* ── Scrollbar ────────────────────────────────────────────────── */
 
 ::-webkit-scrollbar {

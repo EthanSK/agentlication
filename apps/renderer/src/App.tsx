@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import type { TargetApp, ProviderStatusMap } from "@agentlication/contracts";
 import { DEFAULT_THINKING_LEVEL } from "@agentlication/contracts";
 import AppPicker from "./AppPicker";
@@ -7,7 +7,21 @@ import ModelPicker from "./ModelPicker";
 
 type Screen = "hub" | "chat";
 
+/** Parse query params from the current URL. */
+function useQueryParams() {
+  return useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    return {
+      mode: params.get("mode"),
+      app: params.get("app"),
+    };
+  }, []);
+}
+
 export default function App() {
+  const { mode, app: companionAppName } = useQueryParams();
+  const isCompanionMode = mode === "companion" && !!companionAppName;
+
   const [screen, setScreen] = useState<Screen>("hub");
   const [targetApp, setTargetApp] = useState<TargetApp | null>(null);
   // Default to biggest Claude model; falls back to biggest Codex if Claude unavailable
@@ -61,6 +75,45 @@ export default function App() {
     setDetectedApps(apps);
   };
 
+  // ── Companion mode ─────────────────────────────────────────────
+  if (isCompanionMode) {
+    const companionTarget: TargetApp = {
+      name: companionAppName!,
+      path: "",
+      isElectron: true,
+    };
+
+    const handleCloseCompanion = () => {
+      window.agentlication?.closeCompanion();
+    };
+
+    return (
+      <div className="app companion-app">
+        <div className="companion-titlebar">
+          <div className="companion-titlebar-drag">
+            <span className="companion-titlebar-title">{companionAppName}</span>
+          </div>
+          <button
+            className="companion-titlebar-close"
+            onClick={handleCloseCompanion}
+            title="Close companion"
+          >
+            {"\u2715"}
+          </button>
+        </div>
+        <div className="companion-content">
+          <ChatPanel
+            targetApp={companionTarget}
+            selectedModel={selectedModel}
+            providerStatus={providerStatus}
+            placeholder={`Chat with ${companionAppName} agent...`}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  // ── Hub mode (default) ────────────────────────────────────────
   return (
     <div className="app">
       <div className="titlebar">

@@ -283,6 +283,9 @@ ${appData.name} is an Electron application located at ${appData.path}.
     async (_event, message: string, modelId: string) => {
       const onEvent = (event: unknown) => {
         mainWindow?.webContents.send(IPC.AGENT_EVENT, event);
+        if (companionWindow && !companionWindow.isDestroyed()) {
+          companionWindow.webContents.send(IPC.AGENT_EVENT, event);
+        }
       };
       return agentService.send(message, modelId, onEvent);
     }
@@ -294,6 +297,9 @@ ${appData.name} is an Electron application located at ${appData.path}.
     async (_event, message: string, modelId: string, systemPrompt: string) => {
       const onEvent = (event: unknown) => {
         mainWindow?.webContents.send(IPC.AGENT_EVENT, event);
+        if (companionWindow && !companionWindow.isDestroyed()) {
+          companionWindow.webContents.send(IPC.AGENT_EVENT, event);
+        }
       };
       return agentService.sendWithSystemPrompt(
         message,
@@ -325,12 +331,14 @@ ${appData.name} is an Electron application located at ${appData.path}.
 
 // ── Companion Window ──────────────────────────────────────────────
 
-/** Get target app window bounds using Swift/CoreGraphics. */
+/** Get target app window bounds using Swift/CoreGraphics. Picks the largest window. */
 function getTargetAppBounds(appName: string): { x: number; y: number; width: number; height: number } | null {
   try {
     const swift = `
 import CoreGraphics
 let windows = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as! [[String: Any]]
+var bestArea = 0
+var bestBounds = ""
 for w in windows {
     let owner = w[kCGWindowOwnerName as String] as? String ?? ""
     let bounds = w[kCGWindowBounds as String] as? [String: Any] ?? [:]
@@ -338,11 +346,13 @@ for w in windows {
     let height = bounds["Height"] as? Int ?? 0
     let x = bounds["X"] as? Int ?? 0
     let y = bounds["Y"] as? Int ?? 0
-    if owner == "${appName.replace(/"/g, '\\"')}" && width > 100 && height > 100 {
-        print("\\(x),\\(y),\\(width),\\(height)")
-        break
+    let area = width * height
+    if owner == "${appName.replace(/"/g, '\\"')}" && width > 100 && height > 100 && area > bestArea {
+        bestArea = area
+        bestBounds = "\\(x),\\(y),\\(width),\\(height)"
     }
 }
+if !bestBounds.isEmpty { print(bestBounds) }
 `;
     const result = execSync(`swift -e '${swift.replace(/'/g, "'\\''")}'`, {
       encoding: "utf-8",
@@ -433,18 +443,6 @@ function openCompanionWindow(appName: string) {
     stopFocusTracking();
   });
 
-  // Forward agent events to companion window too
-  const originalSend = mainWindow?.webContents.send.bind(mainWindow?.webContents);
-  if (originalSend) {
-    const patchedSend = (channel: string, ...args: unknown[]) => {
-      originalSend(channel, ...args);
-      if (companionWindow && !companionWindow.isDestroyed() && channel === IPC.AGENT_EVENT) {
-        companionWindow.webContents.send(channel, ...args);
-      }
-    };
-    // We need to patch event forwarding in agent handlers instead
-  }
-
   // Start focus tracking
   startFocusTracking(appName);
 }
@@ -466,11 +464,12 @@ function startFocusTracking(targetAppName: string) {
     try {
       focusSubscriptionId = systemPreferences.subscribeWorkspaceNotification(
         "NSWorkspaceDidActivateApplicationNotification",
-        (_event: string, _userInfo: unknown, info: Record<string, unknown>) => {
+        (_event: string, userInfo: Record<string, unknown>, _object: string) => {
           if (!companionWindow || companionWindow.isDestroyed()) return;
 
-          const activeApp = (info as Record<string, unknown>)?.["NSWorkspaceApplicationKey"] as Record<string, unknown> | undefined;
-          const activeName = (activeApp as Record<string, unknown>)?.["NSApplicationName"] as string | undefined;
+          // userInfo contains NSWorkspaceApplicationKey with the activated app info
+          const activeApp = userInfo?.["NSWorkspaceApplicationKey"] as Record<string, unknown> | undefined;
+          const activeName = activeApp?.["NSApplicationName"] as string | undefined;
 
           // Show companion when the target app, Agentlication, or Electron (dev mode) is focused
           const shouldShow =
@@ -514,6 +513,7 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => {
+  closeCompanionWindow();
   cdpService.disconnect();
   if (process.platform !== "darwin") app.quit();
 });

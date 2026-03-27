@@ -129,3 +129,17 @@ Added a confirmation dialog when the user clicks "Reconnect" on an agentlicated 
 - **isAppRunning helper** (main.ts): Uses `pgrep -f` via `execFileSync` to check if the target app process is currently running. Extracts the app name from the `.app` path and matches against running processes.
 - **Confirmation dialog** (main.ts): In the `CDP_CONNECT` IPC handler, before proceeding with the kill-relaunch-connect flow, checks if the target app is running. If so, shows an Electron `dialog.showMessageBox` with "Quit & Restart" and "Cancel" buttons, explaining that the app will be relaunched with CDP enabled. If the user cancels, returns early with `{ success: false, error: "User cancelled restart" }` without touching the target app.
 - **Imports**: Added `dialog` to the Electron imports in main.ts.
+
+## 2026-03-26 — Companion Agent Floating Window
+
+Implemented the Companion Agent floating window that opens when connecting to a target app:
+
+- **Companion BrowserWindow** (main.ts): Created `openCompanionWindow(appName)` that opens a separate floating panel (macOS NSPanel via `type: "panel"`) with `alwaysOnTop: true` at `"floating"` level. Uses `frame: false` + `titleBarStyle: "hiddenInset"` for a custom titlebar with traffic lights. Size 400x600, min 300x400.
+- **Window positioning**: Uses Swift/CoreGraphics to query `CGWindowListCopyWindowInfo` and find the target app's largest window bounds. Positions companion flush to the right of the target app window. Matches target app height.
+- **Focus tracking**: Uses `systemPreferences.subscribeWorkspaceNotification("NSWorkspaceDidActivateApplicationNotification")` to show/hide companion based on which app is focused. Shows when target app, Agentlication, or Electron (dev mode) is active; hides when any other app gains focus.
+- **Renderer companion mode**: `App.tsx` checks for `?mode=companion&app={name}` query params. In companion mode, renders only a custom frameless titlebar (with app name, draggable region, close button) and the ChatPanel — no app picker, no hub UI, no model picker.
+- **IPC channels**: Added `COMPANION_OPEN` and `COMPANION_CLOSE` to contracts and preload. `openCompanion(appName)` and `closeCompanion()` exposed via preload bridge.
+- **Agent event forwarding**: Both `AGENT_SEND` and `AGENT_SEND_HUB` handlers now forward agent events to both main window and companion window.
+- **CSS**: Added `.companion-app`, `.companion-titlebar`, `.companion-titlebar-drag/title/close`, `.companion-content` styles. Hides redundant chat header in companion mode. Compact layout for 400px width.
+- **AppPicker integration**: Calls `openCompanion(app.name)` after successful CDP connection in the Reconnect/Agentlicate flow.
+- **Cleanup**: `closeCompanionWindow()` called on `window-all-closed` event. Focus tracking subscription properly cleaned up.

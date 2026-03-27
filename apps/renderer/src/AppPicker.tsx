@@ -130,6 +130,11 @@ export default function AppPicker({
         });
       }
 
+      // Open companion window for this app
+      if (window.agentlication?.openCompanion) {
+        window.agentlication.openCompanion(app.name);
+      }
+
       onAppSelected(app);
     } catch (err) {
       setConnectionState(app.name, {
