@@ -77,3 +77,22 @@ Resumed Agentlication development by reloading full project context from prior s
   - `harness.md` — agent instruction file with app-specific context and accumulated learnings
   - `source/` — source mirror (git clone of open-source repo, version-matched to installed binary)
   - `patches/` — runtime JS snippets injected via CDP at launch (Greasemonkey-style, not source diffs)
+
+## 2026-03-27 — App Profile Creation Flow
+
+Implemented the full app profile creation flow that runs when the user clicks "Agentlicate" on an app:
+
+- **New IPC channel**: Added `APP_CREATE_PROFILE` (`app:create-profile`) to contracts, preload, and main process. Accepts `{ name, path }` and returns `{ success, profile?, error? }`.
+- **AppProfile type**: Added `AppProfile` interface to contracts with fields: name, slug, bundleId, appPath, installedVersion, cdpPort, sourceRepoUrl, dateAgentlicated.
+- **Profile creation logic** (main.ts):
+  - Slugifies the app name (lowercase, hyphens, trimmed) for the directory name
+  - Creates `~/.agentlication/apps/{slug}/` with `profile.json`, `harness.md`, `source/`, `patches/`
+  - Reads bundle ID and version from macOS Info.plist via `defaults read`
+  - Auto-assigns CDP ports starting from 9222, incrementing by scanning existing profiles
+  - Returns existing profile if already created (idempotent)
+- **Updated isAppAgentlicated**: Now uses slugified name and checks for `profile.json` existence (not just directory existence).
+- **UI flow** (AppPicker.tsx):
+  - "Agentlicate" button first creates the profile (shows "Creating profile..." loading state), then launches the app and connects CDP
+  - After profile creation, the app immediately shows the green "Agentlicated" badge
+  - Button text changes to "Reconnect" for already-agentlicated apps
+- **Tested**: Successfully agentlicated Producer Player — profile created at `~/.agentlication/apps/producer-player/` with correct metadata (bundleId: com.ethansk.producerplayer, version: 1.1.6, cdpPort: 9222).

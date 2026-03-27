@@ -2,7 +2,9 @@ import { app, BrowserWindow, ipcMain } from "electron";
 import * as path from "path";
 import * as fs from "fs";
 import * as os from "os";
+import { execFileSync } from "child_process";
 import { IPC } from "@agentlication/contracts";
+import type { AppProfile, TargetApp } from "@agentlication/contracts";
 import { AgentService } from "./agent-service";
 import { CdpService } from "./cdp-service";
 import { scanElectronApps, launchAppWithDebugging } from "./app-scanner";
@@ -64,6 +66,52 @@ function createWindow() {
   });
 }
 
+// ── Profile helpers ─────────────────────────────────────────────
+
+const PROFILE_ROOT = path.join(os.homedir(), ".agentlication", "apps");
+const CDP_PORT_BASE = 9222;
+
+function slugify(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+/** Read a key from an app's Info.plist (returns empty string on failure). */
+function readPlistKey(appPath: string, key: string): string {
+  try {
+    const plistPath = path.join(appPath, "Contents", "Info");
+    return execFileSync("defaults", ["read", plistPath, key], {
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    }).trim();
+  } catch {
+    return "";
+  }
+}
+
+/** Auto-assign a CDP port by scanning existing profiles. */
+function nextCdpPort(): number {
+  try {
+    if (!fs.existsSync(PROFILE_ROOT)) return CDP_PORT_BASE;
+    const dirs = fs.readdirSync(PROFILE_ROOT);
+    let maxPort = CDP_PORT_BASE - 1;
+    for (const dir of dirs) {
+      const profilePath = path.join(PROFILE_ROOT, dir, "profile.json");
+      try {
+        const data = JSON.parse(fs.readFileSync(profilePath, "utf-8")) as AppProfile;
+        if (data.cdpPort > maxPort) maxPort = data.cdpPort;
+      } catch {
+        // skip broken profiles
+      }
+    }
+    return maxPort + 1;
+  } catch {
+    return CDP_PORT_BASE;
+  }
+}
+
 // ── IPC Handlers ───────────────────────────────────────────────
 
 function registerIpcHandlers() {
@@ -74,14 +122,77 @@ function registerIpcHandlers() {
 
   // Check if an app has been agentlicated (has a per-app profile)
   ipcMain.handle(IPC.APP_IS_AGENTLICATED, async (_event, appName: string) => {
-    const profileDir = path.join(os.homedir(), ".agentlication", "apps", appName);
+    const slug = slugify(appName);
+    const profileFile = path.join(PROFILE_ROOT, slug, "profile.json");
     try {
-      const stat = fs.statSync(profileDir);
-      return stat.isDirectory();
+      return fs.existsSync(profileFile);
     } catch {
       return false;
     }
   });
+
+  // Create an app profile
+  ipcMain.handle(
+    IPC.APP_CREATE_PROFILE,
+    async (_event, appData: { name: string; path: string }): Promise<{ success: boolean; profile?: AppProfile; error?: string }> => {
+      try {
+        const slug = slugify(appData.name);
+        const profileDir = path.join(PROFILE_ROOT, slug);
+
+        // If profile already exists, return it
+        const profileFile = path.join(profileDir, "profile.json");
+        if (fs.existsSync(profileFile)) {
+          const existing = JSON.parse(fs.readFileSync(profileFile, "utf-8")) as AppProfile;
+          return { success: true, profile: existing };
+        }
+
+        // Create directory structure
+        fs.mkdirSync(profileDir, { recursive: true });
+        fs.mkdirSync(path.join(profileDir, "source"), { recursive: true });
+        fs.mkdirSync(path.join(profileDir, "patches"), { recursive: true });
+
+        // Read app metadata from Info.plist
+        const bundleId = readPlistKey(appData.path, "CFBundleIdentifier");
+        const installedVersion =
+          readPlistKey(appData.path, "CFBundleShortVersionString") ||
+          readPlistKey(appData.path, "CFBundleVersion") ||
+          "unknown";
+        const cdpPort = nextCdpPort();
+
+        const profile: AppProfile = {
+          name: appData.name,
+          slug,
+          bundleId,
+          appPath: appData.path,
+          installedVersion,
+          cdpPort,
+          sourceRepoUrl: "",
+          dateAgentlicated: new Date().toISOString(),
+        };
+
+        // Write profile.json
+        fs.writeFileSync(profileFile, JSON.stringify(profile, null, 2), "utf-8");
+
+        // Write harness.md
+        const harnessContent = `# ${appData.name} — Companion Agent Harness
+
+## About this app
+${appData.name} is an Electron application located at ${appData.path}.
+
+## Key areas
+<!-- The Companion Agent will fill this in as it learns the app -->
+
+## Learnings
+<!-- Accumulated knowledge from past interactions -->
+`;
+        fs.writeFileSync(path.join(profileDir, "harness.md"), harnessContent, "utf-8");
+
+        return { success: true, profile };
+      } catch (err) {
+        return { success: false, error: String(err) };
+      }
+    }
+  );
 
   // Launch target app with debugging
   ipcMain.handle(IPC.LAUNCH_APP, async (_event, appPath: string) => {

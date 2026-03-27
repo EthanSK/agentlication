@@ -7,6 +7,7 @@ const IPC = {
   SCAN_APPS: "app:scan",
   LAUNCH_APP: "app:launch",
   APP_IS_AGENTLICATED: "app:is-agentlicated",
+  APP_CREATE_PROFILE: "app:create-profile",
   CDP_CONNECT: "cdp:connect",
   CDP_GET_DOM: "cdp:get-dom",
   CDP_EVALUATE: "cdp:evaluate",
@@ -24,6 +25,8 @@ contextBridge.exposeInMainWorld("agentlication", {
   scanApps: () => ipcRenderer.invoke(IPC.SCAN_APPS),
   launchApp: (appPath: string) => ipcRenderer.invoke(IPC.LAUNCH_APP, appPath),
   isAppAgentlicated: (appName: string) => ipcRenderer.invoke(IPC.APP_IS_AGENTLICATED, appName),
+  createAppProfile: (appData: { name: string; path: string }) =>
+    ipcRenderer.invoke(IPC.APP_CREATE_PROFILE, appData),
 
   // CDP
   cdpConnect: (port: number) => ipcRenderer.invoke(IPC.CDP_CONNECT, port),

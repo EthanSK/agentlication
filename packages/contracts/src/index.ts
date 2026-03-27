@@ -127,6 +127,19 @@ export interface CdpTarget {
   type: string;
 }
 
+// ── App profile types ─────────────────────────────────────────
+
+export interface AppProfile {
+  name: string;           // Display name
+  slug: string;           // Directory name (slugified)
+  bundleId: string;       // macOS bundle ID if available
+  appPath: string;        // Full path to .app
+  installedVersion: string; // Version from Info.plist
+  cdpPort: number;        // Auto-assigned CDP port
+  sourceRepoUrl: string;  // Empty initially
+  dateAgentlicated: string; // ISO date
+}
+
 // ── IPC channel names ──────────────────────────────────────────
 
 export const IPC = {
@@ -134,6 +147,7 @@ export const IPC = {
   SCAN_APPS: "app:scan",
   LAUNCH_APP: "app:launch",
   APP_IS_AGENTLICATED: "app:is-agentlicated",
+  APP_CREATE_PROFILE: "app:create-profile",
 
   // CDP
   CDP_CONNECT: "cdp:connect",

@@ -14,6 +14,7 @@ export default function AppPicker({
   const [loading, setLoading] = useState(true);
   const [customPath, setCustomPath] = useState("");
   const [launching, setLaunching] = useState<string | null>(null);
+  const [creatingProfile, setCreatingProfile] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [agentlicatedApps, setAgentlicatedApps] = useState<Set<string>>(new Set());
 
@@ -57,9 +58,34 @@ export default function AppPicker({
   };
 
   const handleAgentlicate = async (app: TargetApp) => {
-    setLaunching(app.path);
     setError(null);
 
+    // Step 1: Create profile if not already agentlicated
+    if (!agentlicatedApps.has(app.name) && window.agentlication) {
+      setCreatingProfile(app.path);
+      try {
+        const profileResult = await window.agentlication.createAppProfile({
+          name: app.name,
+          path: app.path,
+        });
+        if (!profileResult.success) {
+          setError(profileResult.error || "Failed to create app profile");
+          setCreatingProfile(null);
+          return;
+        }
+        // Mark as agentlicated
+        setAgentlicatedApps((prev) => new Set(prev).add(app.name));
+      } catch (err) {
+        setError(String(err));
+        setCreatingProfile(null);
+        return;
+      } finally {
+        setCreatingProfile(null);
+      }
+    }
+
+    // Step 2: Launch and connect
+    setLaunching(app.path);
     try {
       if (window.agentlication) {
         const result = await window.agentlication.launchApp(app.path);
@@ -143,13 +169,15 @@ export default function AppPicker({
               <button
                 className="agentlicate-btn"
                 onClick={() => handleAgentlicate(app)}
-                disabled={launching === app.path}
+                disabled={launching === app.path || creatingProfile === app.path}
               >
-                {launching === app.path
-                  ? "Launching..."
-                  : agentlicatedApps.has(app.name)
-                    ? "Reconnect"
-                    : "Agentlicate"}
+                {creatingProfile === app.path
+                  ? "Creating profile..."
+                  : launching === app.path
+                    ? "Launching..."
+                    : agentlicatedApps.has(app.name)
+                      ? "Reconnect"
+                      : "Agentlicate"}
               </button>
             </div>
           ))
