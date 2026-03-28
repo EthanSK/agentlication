@@ -236,3 +236,18 @@ Two changes to make the companion chat panel functional as an AI agent:
 - **ChatPanel updated**: Companion mode now uses `companionAgentSend()` instead of the generic `agentSend()`, ensuring every companion message includes HARNESS.md + DOM context.
 - **Preload bridge**: `companionAgentSend` exposed via contextBridge.
 - **Tested**: Sent "What is Producer Player?" in the companion chat; Claude responded with a detailed analysis of the app using the system prompt context. Status messages from source repo search also displayed inline in the feed.
+
+## 2026-03-28 — Status Check & Next Steps Discussion
+
+Reviewed the full project state and discussed next steps with Ethan:
+
+- **Current state summary**: MVP scaffold, app scanner, model picker, CDP connection flow, companion floating window, source repo discovery, companion agent brain, status feed, and non-Electron app UI support are all implemented and working.
+- **Next steps prioritized**:
+  1. CDP action execution (CLICK, TYPE, EVAL — currently placeholders)
+  2. Runtime patch system (Greasemonkey-style JS/TSX injection via CDP)
+  3. Smoke test / ping test during agentlication
+  4. Interactive element mapping
+  5. Accessibility API backend for non-Electron apps
+  6. Pipeline / factory system
+  7. Website / landing page at agentlication.ai
+- Awaiting Ethan's decision on which area to tackle next.
