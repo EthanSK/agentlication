@@ -251,3 +251,23 @@ Reviewed the full project state and discussed next steps with Ethan:
   6. Pipeline / factory system
   7. Website / landing page at agentlication.ai
 - Awaiting Ethan's decision on which area to tackle next.
+
+## 2026-03-28 — CDP & Native App Support Research
+
+Deep research session exploring implementation approaches for CDP action execution and native macOS app support:
+
+- **Research report written**: `RESEARCH-CDP-AND-NATIVE.md` — comprehensive report with code examples, benchmarks, and architecture recommendations.
+- **CDP action execution findings**:
+  - `Runtime.evaluate` is the primary approach for click/type/eval — already partially working in the codebase
+  - `Input.dispatchMouseEvent` / `Input.dispatchKeyEvent` as fallback for apps that block synthetic JS events
+  - CDP Accessibility domain provides compact a11y tree (~2-5KB vs 50KB+ raw DOM) — much better for agent context
+  - Numbered interactive element list for the agent to reference: `[0] button "Save"`, `[1] input "Search"`
+  - JSON tool blocks in agent responses as the initial action format, with MCP server as the long-term approach
+  - React native setter trick needed for input fields (bypasses React's synthetic event system)
+- **Native app support findings**:
+  - Compiled Swift binary (AXUIElement API) is the clear winner — 130ms tree read vs 5,500ms for JXA (40x faster)
+  - AX API provides roles, labels, values, positions, sizes, and available actions
+  - `AXUIElementPerformAction(kAXPressAction)` for clicks, `AXUIElementSetAttributeValue` for typing
+  - Swift CLI binary (`ax-bridge`) bundled as extraResource in the Electron app
+  - Permission handling via `systemPreferences.isTrustedAccessibilityClient()`
+- **Implementation plan**: Phase 1-2 CDP actions (3-5 days) → Phase 3 native support (3-5 days) → Phase 4 screenshot+vision (optional) → Phase 5 MCP server (future)
