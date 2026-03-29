@@ -45,3 +45,6 @@ coverage/
 # Temporary
 tmp/
 temp/
+
+# Native binary (compile from source with build.sh)
+native/ax-bridge/ax-bridge

@@ -299,3 +299,19 @@ Deep research session exploring implementation approaches for CDP action executi
   - Swift CLI binary (`ax-bridge`) bundled as extraResource in the Electron app
   - Permission handling via `systemPreferences.isTrustedAccessibilityClient()`
 - **Implementation plan**: Phase 1-2 CDP actions (3-5 days) → Phase 3 native support (3-5 days) → Phase 4 screenshot+vision (optional) → Phase 5 MCP server (future)
+
+### 2026-03-28 — Phase 3: Native macOS App Support
+
+**What was built:**
+- **Swift CLI binary (`ax-bridge`)**: Compiled binary at `native/ax-bridge/` that provides commands for reading accessibility trees, clicking elements, typing text, focusing elements, listing interactive elements, performing AX actions, setting values, checking permissions, and getting app info. All output is JSON.
+- **Contracts updates**: Added `AXElement`, `AXTree`, `AXActionResult`, `AXAppInfo`, `AXInteractiveElement`, `AXAgentAction` types. Added 11 new IPC channels (`ax:tree`, `ax:click`, `ax:type`, `ax:focus`, `ax:elements`, `ax:action`, `ax:set-value`, `ax:check-permission`, `ax:info`, `ax:execute-action`, `companion:native-agent-send`). Extended `AgentActionKind` with `ax_` prefixed actions. Added `isElectron` to `AppProfile`.
+- **AccessibilityService** (`apps/electron/src/accessibility-service.ts`): Node.js wrapper calling `execFile` on the Swift binary with JSON parsing. Methods: `getTree`, `click`, `type`, `focus`, `getActions`, `getInteractiveElements`, `performAction`, `setValue`, `checkPermission`, `getInfo`, `executeAction`.
+- **IPC wiring**: All AX handlers registered in `main.ts`, exposed via `preload.ts`, typed in `types.d.ts`.
+- **Agent integration**: `sendNativeCompanion()` method in agent-service builds AX-based system prompt with interactive elements, accessibility tree, and app info. Tool-block parser routes `ax_` prefixed actions to AccessibilityService.
+- **Permission handling**: Uses `systemPreferences.isTrustedAccessibilityClient()` — checks on agentlication, prompts if not granted.
+
+**Testing results (real native apps):**
+- Safari: Info (22ms), tree read depth 3 (66ms), 904 interactive elements discovered (742ms), focus/type/click all working
+- Finder: 2123 interactive elements, sidebar, column view detected
+- Notes: Folder list, note cells, text fields all visible
+- System Settings: 265 elements including sidebar, search field, buttons
