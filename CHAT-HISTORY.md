@@ -315,3 +315,16 @@ Deep research session exploring implementation approaches for CDP action executi
 - Finder: 2123 interactive elements, sidebar, column view detected
 - Notes: Folder list, note cells, text fields all visible
 - System Settings: 265 elements including sidebar, search field, buttons
+
+## 2026-03-28 — Phase 3 Demo Video: Native macOS App Support
+
+Recorded and sent a screen demo video showcasing AX Bridge's native macOS app support across four real apps:
+
+- **Video recorded**: 45-second 1920x1080 H.264 screen capture at 30fps using ffmpeg avfoundation, showing terminal output of ax-bridge commands run against live native apps.
+- **Apps demonstrated**:
+  - Safari: 910 interactive elements, full AX tree (depth 3), 2 windows detected, app info with PID
+  - Notes: 825 interactive elements, folder outlines, text fields, 1 window ("All iCloud -- 219 notes")
+  - System Settings: 265 interactive elements, sidebar navigation
+  - Finder: Interactive elements detected
+- **ax-bridge commands shown**: `info` (app metadata + windows), `elements --interactive` (numbered interactive element list with roles/names), `tree --depth 3` (hierarchical accessibility tree)
+- **Video sent to Ethan via Telegram**: Used Bot API `sendVideo` endpoint directly (not the plugin reply tool) for proper video rendering with streaming support.
