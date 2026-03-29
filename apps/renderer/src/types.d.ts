@@ -11,6 +11,11 @@ import type {
   AgentAction,
   AgentActionResult,
   InteractiveElement,
+  AXTree,
+  AXActionResult,
+  AXAppInfo,
+  AXInteractiveElement,
+  AXAgentAction,
 } from "@agentlication/contracts";
 
 interface AgentlicationAPI {
@@ -47,6 +52,20 @@ interface AgentlicationAPI {
   findSourceRepo: (appName: string, bundleId?: string) => Promise<SourceRepoFindResult>;
   cloneSource: (appName: string, repoUrl: string) => Promise<SourceCloneResult>;
   companionAgentSend: (payload: { appName: string; message: string; modelId: string }) => Promise<void>;
+
+  // Accessibility (native macOS apps)
+  axCheckPermission: () => Promise<{ granted: boolean }>;
+  axTree: (appName: string, depth?: number) => Promise<AXTree>;
+  axClick: (appName: string, label: string) => Promise<AXActionResult>;
+  axType: (appName: string, text: string) => Promise<AXActionResult>;
+  axFocus: (appName: string, label: string) => Promise<AXActionResult>;
+  axElements: (appName: string) => Promise<AXInteractiveElement[]>;
+  axAction: (appName: string, action: string, label: string) => Promise<AXActionResult>;
+  axSetValue: (appName: string, label: string, value: string) => Promise<AXActionResult>;
+  axInfo: (appName: string) => Promise<AXAppInfo>;
+  axExecuteAction: (appName: string, action: AXAgentAction) => Promise<AXActionResult>;
+  companionNativeAgentSend: (payload: { appName: string; message: string; modelId: string }) => Promise<void>;
+
   onStatusMessage: (callback: (msg: StatusMessage) => void) => () => void;
 }
 

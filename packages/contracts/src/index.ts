@@ -161,8 +161,9 @@ export interface AppProfile {
   slug: string;           // Directory name (slugified)
   bundleId: string;       // macOS bundle ID if available
   appPath: string;        // Full path to .app
+  isElectron: boolean;    // Whether this is an Electron app
   installedVersion: string; // Version from Info.plist
-  cdpPort: number;        // Auto-assigned CDP port
+  cdpPort: number;        // Auto-assigned CDP port (0 for non-Electron)
   sourceRepoUrl: string;  // Empty initially
   sourceCloneStatus?: SourceCloneStatus; // Status of source repo cloning
   dateAgentlicated: string; // ISO date
@@ -210,7 +211,16 @@ export type AgentActionKind =
   | "get_elements"
   | "get_a11y_tree"
   | "navigate"
-  | "press_key";
+  | "press_key"
+  // Native AX actions (prefixed with ax_)
+  | "ax_click"
+  | "ax_type"
+  | "ax_focus"
+  | "ax_get_tree"
+  | "ax_elements"
+  | "ax_set_value"
+  | "ax_action"
+  | "ax_info";
 
 export interface AgentAction {
   action: AgentActionKind;
@@ -224,6 +234,9 @@ export interface AgentAction {
   timeout?: number;       // Max wait time in ms
   depth?: number;         // Depth for a11y tree
   tagFilter?: string;     // Tag filter for click_text
+  label?: string;         // AX element label (for ax_ actions)
+  axAction?: string;      // AX action name (e.g. "AXPress", "AXShowMenu")
+  appName?: string;       // Target app name (for ax_ actions)
 }
 
 export interface AgentActionResult {
@@ -246,6 +259,85 @@ export interface InteractiveElement {
   disabled: boolean;
   checked?: boolean;
   rect: { x: number; y: number; w: number; h: number };
+}
+
+// ── Accessibility (native macOS app) types ─────────────────────
+
+/** A single node in the macOS accessibility tree. */
+export interface AXElement {
+  role: string;
+  name: string;
+  value?: string;
+  description?: string;
+  identifier?: string;
+  position?: { x: number; y: number };
+  size?: { width: number; height: number };
+  enabled: boolean;
+  focused?: boolean;
+  actions: string[];
+  children?: AXElement[];
+}
+
+/** The full accessibility tree for a native app. */
+export interface AXTree {
+  appName: string;
+  pid: number;
+  tree: AXElement;
+  timestamp: number;
+}
+
+/** Result of an accessibility action (click, type, focus, etc.). */
+export interface AXActionResult {
+  success: boolean;
+  data?: unknown;
+  error?: string;
+}
+
+/** Info about a running native app. */
+export interface AXAppInfo {
+  name: string;
+  pid: number;
+  bundleId?: string;
+  windows: Array<{
+    title: string;
+    position: { x: number; y: number };
+    size: { width: number; height: number };
+  }>;
+  menuBarItems?: string[];
+}
+
+/** An interactive element discovered via the AX API. */
+export interface AXInteractiveElement {
+  index: number;
+  role: string;
+  name: string;
+  value?: string;
+  description?: string;
+  enabled: boolean;
+  actions: string[];
+  position?: { x: number; y: number };
+  size?: { width: number; height: number };
+}
+
+/** Agent action kinds for native AX interactions. */
+export type AXAgentActionKind =
+  | "ax_click"
+  | "ax_type"
+  | "ax_focus"
+  | "ax_get_tree"
+  | "ax_elements"
+  | "ax_set_value"
+  | "ax_action"
+  | "ax_info";
+
+/** Agent action for native AX interactions (used in tool blocks). */
+export interface AXAgentAction {
+  action: AXAgentActionKind;
+  label?: string;      // Element label/name to target
+  text?: string;       // Text to type
+  value?: string;      // Value to set
+  axAction?: string;   // AX action name (e.g. "AXPress", "AXShowMenu")
+  depth?: number;      // Tree depth
 }
 
 // ── IPC channel names ──────────────────────────────────────────
@@ -300,4 +392,19 @@ export const IPC = {
 
   // Companion agent (with HARNESS.md + DOM context)
   COMPANION_AGENT_SEND: "companion:agent-send",
+
+  // Accessibility (native macOS apps)
+  AX_TREE: "ax:tree",
+  AX_CLICK: "ax:click",
+  AX_TYPE: "ax:type",
+  AX_FOCUS: "ax:focus",
+  AX_ELEMENTS: "ax:elements",
+  AX_ACTION: "ax:action",
+  AX_SET_VALUE: "ax:set-value",
+  AX_CHECK_PERMISSION: "ax:check-permission",
+  AX_INFO: "ax:info",
+  AX_EXECUTE_ACTION: "ax:execute-action",
+
+  // Companion agent for native apps (with AX context)
+  COMPANION_NATIVE_AGENT_SEND: "companion:native-agent-send",
 } as const;

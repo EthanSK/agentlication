@@ -4,9 +4,10 @@ import * as fs from "fs";
 import * as os from "os";
 import { execFileSync, execSync } from "child_process";
 import { IPC } from "@agentlication/contracts";
-import type { AppProfile, TargetApp, CdpPageInfo, StatusMessage, StatusIcon, SourceRepoFindResult, SourceCloneResult, AgentAction, AgentActionResult } from "@agentlication/contracts";
+import type { AppProfile, TargetApp, CdpPageInfo, StatusMessage, StatusIcon, SourceRepoFindResult, SourceCloneResult, AgentAction, AgentActionResult, AXTree, AXActionResult, AXAppInfo, AXInteractiveElement, AXAgentAction } from "@agentlication/contracts";
 import { AgentService } from "./agent-service";
 import { CdpService } from "./cdp-service";
+import { AccessibilityService } from "./accessibility-service";
 import { scanElectronApps, launchAppWithDebugging } from "./app-scanner";
 import { findSourceRepo, cloneSourceRepo } from "./source-repo-service";
 
@@ -15,7 +16,8 @@ let companionWindow: BrowserWindow | null = null;
 let companionTargetAppName: string | null = null;
 let focusSubscriptionId: number | null = null;
 const cdpService = new CdpService();
-const agentService = new AgentService(cdpService);
+const accessibilityService = new AccessibilityService();
+const agentService = new AgentService(cdpService, accessibilityService);
 
 const isDev = !app.isPackaged;
 
@@ -168,7 +170,7 @@ function registerIpcHandlers() {
   // Create an app profile
   ipcMain.handle(
     IPC.APP_CREATE_PROFILE,
-    async (_event, appData: { name: string; path: string }): Promise<{ success: boolean; profile?: AppProfile; error?: string }> => {
+    async (_event, appData: { name: string; path: string; isElectron?: boolean }): Promise<{ success: boolean; profile?: AppProfile; error?: string }> => {
       try {
         const slug = slugify(appData.name);
         const profileDir = path.join(PROFILE_ROOT, slug);
@@ -193,13 +195,15 @@ function registerIpcHandlers() {
           readPlistKey(appData.path, "CFBundleShortVersionString") ||
           readPlistKey(appData.path, "CFBundleVersion") ||
           "unknown";
-        const cdpPort = nextCdpPort();
+        const isElectron = appData.isElectron ?? true;
+        const cdpPort = isElectron ? nextCdpPort() : 0;
 
         const profile: AppProfile = {
           name: appData.name,
           slug,
           bundleId,
           appPath: appData.path,
+          isElectron,
           installedVersion,
           cdpPort,
           sourceRepoUrl: "",
@@ -210,10 +214,11 @@ function registerIpcHandlers() {
         fs.writeFileSync(profileFile, JSON.stringify(profile, null, 2), "utf-8");
 
         // Write HARNESS.md
+        const appType = isElectron ? "an Electron application" : "a native macOS application";
         const harnessContent = `# ${appData.name} — Companion Agent Harness
 
 ## About this app
-${appData.name} is an Electron application located at ${appData.path}.
+${appData.name} is ${appType} located at ${appData.path}.
 
 ## Key areas
 <!-- The Companion Agent will fill this in as it learns the app -->
@@ -551,6 +556,118 @@ ${appData.name} is an Electron application located at ${appData.path}.
       // Use the action-based send which auto-builds system prompt with
       // interactive elements + a11y tree + tool-block parsing
       return agentService.sendCompanion(
+        message,
+        modelId,
+        appName,
+        harnessSection,
+        onEvent
+      );
+    }
+  );
+
+  // ── Accessibility (native macOS app) handlers ──────────────────
+
+  ipcMain.handle(IPC.AX_CHECK_PERMISSION, async () => {
+    // Use Electron's built-in check first, then fall back to ax-bridge
+    const trusted = systemPreferences.isTrustedAccessibilityClient(false);
+    return { granted: trusted };
+  });
+
+  ipcMain.handle(IPC.AX_TREE, async (_event, appName: string, depth?: number) => {
+    try {
+      return await accessibilityService.getTree(appName, depth);
+    } catch (err) {
+      return { success: false, error: String(err) };
+    }
+  });
+
+  ipcMain.handle(IPC.AX_CLICK, async (_event, appName: string, label: string) => {
+    return accessibilityService.click(appName, label);
+  });
+
+  ipcMain.handle(IPC.AX_TYPE, async (_event, appName: string, text: string) => {
+    return accessibilityService.type(appName, text);
+  });
+
+  ipcMain.handle(IPC.AX_FOCUS, async (_event, appName: string, label: string) => {
+    return accessibilityService.focus(appName, label);
+  });
+
+  ipcMain.handle(IPC.AX_ELEMENTS, async (_event, appName: string) => {
+    try {
+      return await accessibilityService.getInteractiveElements(appName);
+    } catch (err) {
+      return { success: false, error: String(err) };
+    }
+  });
+
+  ipcMain.handle(IPC.AX_ACTION, async (_event, appName: string, action: string, label: string) => {
+    return accessibilityService.performAction(appName, action, label);
+  });
+
+  ipcMain.handle(IPC.AX_SET_VALUE, async (_event, appName: string, label: string, value: string) => {
+    return accessibilityService.setValue(appName, label, value);
+  });
+
+  ipcMain.handle(IPC.AX_INFO, async (_event, appName: string) => {
+    try {
+      return await accessibilityService.getInfo(appName);
+    } catch (err) {
+      return { success: false, error: String(err) };
+    }
+  });
+
+  ipcMain.handle(IPC.AX_EXECUTE_ACTION, async (_event, appName: string, action: AXAgentAction): Promise<AXActionResult> => {
+    return accessibilityService.executeAction(action, appName);
+  });
+
+  // ── Companion agent for native apps (with AX context) ──────────
+  ipcMain.handle(
+    IPC.COMPANION_NATIVE_AGENT_SEND,
+    async (
+      _event,
+      payload: { appName: string; message: string; modelId: string }
+    ) => {
+      const { appName, message, modelId } = payload;
+      const slug = slugify(appName);
+      const appDir = path.join(PROFILE_ROOT, slug);
+
+      // Check accessibility permission first
+      const trusted = systemPreferences.isTrustedAccessibilityClient(false);
+      if (!trusted) {
+        // Prompt for permission
+        systemPreferences.isTrustedAccessibilityClient(true);
+        emitStatus(
+          "Accessibility permission required. Please grant access in System Settings.",
+          "error",
+          "error"
+        );
+        return;
+      }
+
+      // Read HARNESS.md if it exists
+      let harnessContent = "";
+      const harnessPath = path.join(appDir, "HARNESS.md");
+      try {
+        if (fs.existsSync(harnessPath)) {
+          harnessContent = fs.readFileSync(harnessPath, "utf-8");
+        }
+      } catch {
+        // Non-critical
+      }
+
+      const harnessSection = harnessContent
+        ? `\n\n## HARNESS.md\n${harnessContent}`
+        : "";
+
+      const onEvent = (event: unknown) => {
+        mainWindow?.webContents.send(IPC.AGENT_EVENT, event);
+        if (companionWindow && !companionWindow.isDestroyed()) {
+          companionWindow.webContents.send(IPC.AGENT_EVENT, event);
+        }
+      };
+
+      return agentService.sendNativeCompanion(
         message,
         modelId,
         appName,

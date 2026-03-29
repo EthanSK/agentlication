@@ -38,6 +38,19 @@ const IPC = {
   APP_FIND_SOURCE_REPO: "app:find-source-repo",
   APP_CLONE_SOURCE: "app:clone-source",
   COMPANION_AGENT_SEND: "companion:agent-send",
+
+  // Accessibility (native macOS apps)
+  AX_TREE: "ax:tree",
+  AX_CLICK: "ax:click",
+  AX_TYPE: "ax:type",
+  AX_FOCUS: "ax:focus",
+  AX_ELEMENTS: "ax:elements",
+  AX_ACTION: "ax:action",
+  AX_SET_VALUE: "ax:set-value",
+  AX_CHECK_PERMISSION: "ax:check-permission",
+  AX_INFO: "ax:info",
+  AX_EXECUTE_ACTION: "ax:execute-action",
+  COMPANION_NATIVE_AGENT_SEND: "companion:native-agent-send",
 } as const;
 
 // Expose a safe API to the renderer process
@@ -105,6 +118,31 @@ contextBridge.exposeInMainWorld("agentlication", {
   // Companion agent (with HARNESS.md + DOM context)
   companionAgentSend: (payload: { appName: string; message: string; modelId: string }) =>
     ipcRenderer.invoke(IPC.COMPANION_AGENT_SEND, payload),
+
+  // Accessibility (native macOS apps)
+  axCheckPermission: () => ipcRenderer.invoke(IPC.AX_CHECK_PERMISSION),
+  axTree: (appName: string, depth?: number) =>
+    ipcRenderer.invoke(IPC.AX_TREE, appName, depth),
+  axClick: (appName: string, label: string) =>
+    ipcRenderer.invoke(IPC.AX_CLICK, appName, label),
+  axType: (appName: string, text: string) =>
+    ipcRenderer.invoke(IPC.AX_TYPE, appName, text),
+  axFocus: (appName: string, label: string) =>
+    ipcRenderer.invoke(IPC.AX_FOCUS, appName, label),
+  axElements: (appName: string) =>
+    ipcRenderer.invoke(IPC.AX_ELEMENTS, appName),
+  axAction: (appName: string, action: string, label: string) =>
+    ipcRenderer.invoke(IPC.AX_ACTION, appName, action, label),
+  axSetValue: (appName: string, label: string, value: string) =>
+    ipcRenderer.invoke(IPC.AX_SET_VALUE, appName, label, value),
+  axInfo: (appName: string) =>
+    ipcRenderer.invoke(IPC.AX_INFO, appName),
+  axExecuteAction: (appName: string, action: unknown) =>
+    ipcRenderer.invoke(IPC.AX_EXECUTE_ACTION, appName, action),
+
+  // Companion agent for native apps (with AX context)
+  companionNativeAgentSend: (payload: { appName: string; message: string; modelId: string }) =>
+    ipcRenderer.invoke(IPC.COMPANION_NATIVE_AGENT_SEND, payload),
 
   // Status feed
   onStatusMessage: (callback: (msg: unknown) => void) => {

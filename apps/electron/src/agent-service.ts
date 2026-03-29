@@ -9,8 +9,9 @@ import {
   ProviderStatusMap,
   PROVIDER_INSTALL_COMMANDS,
 } from "@agentlication/contracts";
-import type { AgentAction, AgentActionResult, InteractiveElement } from "@agentlication/contracts";
+import type { AgentAction, AgentActionResult, InteractiveElement, AXInteractiveElement } from "@agentlication/contracts";
 import { CdpService } from "./cdp-service";
+import { AccessibilityService } from "./accessibility-service";
 
 // ── Provider abstraction ───────────────────────────────────────
 
@@ -471,7 +472,10 @@ export class AgentService {
 
   private currentProvider: Provider | null = null;
 
-  constructor(private cdpService: CdpService) {}
+  constructor(
+    private cdpService: CdpService,
+    private accessibilityService?: AccessibilityService
+  ) {}
 
   async send(
     message: string,
@@ -621,6 +625,106 @@ export class AgentService {
               onEvent({
                 kind: "agent:tool-result",
                 payload: { action, result: { success: false, error: String(err) } },
+                timestamp: Date.now(),
+              });
+            }
+          }
+        }
+        onEvent(event);
+      });
+    } catch (err) {
+      onEvent({
+        kind: "agent:error",
+        payload: { message: String(err) },
+        timestamp: Date.now(),
+      });
+    }
+  }
+
+  /**
+   * Send a companion agent message for a NATIVE (non-Electron) app.
+   * Uses the AccessibilityService instead of CDP for context and actions.
+   */
+  async sendNativeCompanion(
+    message: string,
+    modelId: string,
+    appName: string,
+    harnessSection: string,
+    onEvent: (event: AgentEvent) => void
+  ): Promise<void> {
+    if (!this.accessibilityService) {
+      onEvent({
+        kind: "agent:error",
+        payload: { message: "AccessibilityService not available" },
+        timestamp: Date.now(),
+      });
+      return;
+    }
+
+    const model = MODELS.find((m) => m.id === modelId);
+    if (!model) {
+      onEvent({
+        kind: "agent:error",
+        payload: { message: `Unknown model: ${modelId}` },
+        timestamp: Date.now(),
+      });
+      return;
+    }
+
+    const provider = this.providers[model.provider];
+    this.currentProvider = provider;
+
+    // Build the system prompt with AX context
+    const systemPrompt = await buildNativeSystemPrompt(
+      this.accessibilityService,
+      appName,
+      harnessSection
+    );
+
+    // Tool-block accumulator for parsing tool blocks
+    let fullText = "";
+    let executedToolBlocks = new Set<string>();
+    const axService = this.accessibilityService;
+
+    try {
+      await provider.send(message, systemPrompt, modelId, async (event) => {
+        if (event.kind === "agent:chunk") {
+          const chunk = event.payload as { text: string };
+          fullText += chunk.text;
+
+          // Check for complete tool blocks
+          const actions = parseToolBlocks(fullText);
+          for (const { raw, action } of actions) {
+            if (executedToolBlocks.has(raw)) continue;
+            executedToolBlocks.add(raw);
+
+            // Route AX actions to AccessibilityService
+            if (action.action.startsWith("ax_")) {
+              try {
+                const result = await axService.executeAction(
+                  { action: action.action as any, label: action.label, text: action.text, value: action.value, axAction: action.axAction, depth: action.depth },
+                  appName
+                );
+                onEvent({
+                  kind: "agent:tool-result",
+                  payload: { action, result },
+                  timestamp: Date.now(),
+                });
+              } catch (err) {
+                onEvent({
+                  kind: "agent:tool-result",
+                  payload: { action, result: { success: false, error: String(err) } },
+                  timestamp: Date.now(),
+                });
+              }
+            } else {
+              // Non-AX actions for native apps are not supported
+              onEvent({
+                kind: "agent:tool-result",
+                payload: {
+                  action,
+                  result: { success: false, error: `CDP action "${action.action}" not available for native apps. Use ax_ prefixed actions.` },
+                },
                 timestamp: Date.now(),
               });
             }
@@ -874,4 +978,166 @@ The code will be executed in the app's renderer process via CDP.
 
 Be concise and helpful. Match the app's existing design when injecting UI.
 ${domSection}`;
+}
+
+// ── Native app system prompt builder ──────────────────────────
+
+/**
+ * Format AX interactive elements as a compact numbered list for the agent.
+ */
+function formatAXInteractiveElements(elements: AXInteractiveElement[]): string {
+  if (elements.length === 0) return "(No interactive elements found)";
+
+  const lines: string[] = [];
+  for (const el of elements.slice(0, 80)) {
+    let line = `[${el.index}] ${el.role}`;
+    if (el.name) line += ` "${el.name}"`;
+    if (el.description) line += ` desc="${el.description}"`;
+    if (el.value) line += ` val="${el.value}"`;
+    if (!el.enabled) line += ` [disabled]`;
+    if (el.actions.length > 0) line += ` actions:${el.actions.join(",")}`;
+    if (el.position && el.size) {
+      line += ` @(${el.position.x},${el.position.y},${el.size.width}x${el.size.height})`;
+    }
+    lines.push(line);
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * Format the AX tree as a compact text representation for the agent.
+ */
+function formatAXTree(tree: any, indent: number = 0): string {
+  const lines: string[] = [];
+  const prefix = "  ".repeat(indent);
+  const role = tree.role || "?";
+  const name = tree.name || "";
+  const value = tree.value;
+
+  let line = `${prefix}${role}`;
+  if (name) line += ` "${name}"`;
+  if (value && typeof value === "string" && value.length < 80) {
+    line += ` val="${value}"`;
+  }
+  if (tree.focused) line += " [focused]";
+  if (!tree.enabled) line += " [disabled]";
+  if (tree.actions && tree.actions.length > 0) {
+    line += ` actions:${tree.actions.join(",")}`;
+  }
+
+  lines.push(line);
+
+  if (tree.children) {
+    for (const child of tree.children) {
+      lines.push(formatAXTree(child, indent + 1));
+    }
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * Build a system prompt for native app interactions using the AX API.
+ */
+async function buildNativeSystemPrompt(
+  axService: AccessibilityService,
+  appName: string,
+  harnessSection: string
+): Promise<string> {
+  let elementsSection = "\n\n(No interactive elements available -- AX not connected)";
+  let treeSection = "";
+  let appInfoSection = "";
+
+  try {
+    const elements = await axService.getInteractiveElements(appName);
+    const formatted = formatAXInteractiveElements(elements);
+    elementsSection = `\n\n## Interactive Elements\n\`\`\`\n${formatted}\n\`\`\``;
+  } catch {
+    elementsSection = "\n\n(Failed to read interactive elements)";
+  }
+
+  try {
+    const tree = await axService.getTree(appName, 4);
+    const formatted = formatAXTree(tree.tree);
+    const truncated = formatted.length > 8000 ? formatted.slice(0, 8000) + "\n... (truncated)" : formatted;
+    treeSection = `\n\n## Accessibility Tree\n\`\`\`\n${truncated}\n\`\`\``;
+  } catch {
+    // Non-critical
+  }
+
+  try {
+    const info = await axService.getInfo(appName);
+    const windowList = info.windows
+      .map((w) => `  - "${w.title}" at (${w.position.x},${w.position.y}) ${w.size.width}x${w.size.height}`)
+      .join("\n");
+    const menuItems = info.menuBarItems?.join(", ") || "unknown";
+    appInfoSection = `\n\n## App Info\n- Name: ${info.name}\n- PID: ${info.pid}\n- Bundle ID: ${info.bundleId || "unknown"}\n- Windows:\n${windowList}\n- Menu bar: ${menuItems}`;
+  } catch {
+    // Non-critical
+  }
+
+  return `You are Agentlication, an AI assistant that can see and interact with native macOS applications via the Accessibility API.
+
+You are a Companion Agent for ${appName}.
+
+## Your Capabilities
+
+You can interact with ${appName} using structured tool calls. To perform an action, output a tool code block containing a JSON object:
+
+\`\`\`tool
+{"action": "ax_click", "label": "Save"}
+\`\`\`
+
+## Available Actions
+
+| Action | Parameters | Description |
+|--------|-----------|-------------|
+| ax_click | label | Click an element by its name/label |
+| ax_type | text | Type text into the focused element |
+| ax_focus | label | Focus an element by its name/label |
+| ax_get_tree | depth? | Get the full accessibility tree |
+| ax_elements | (none) | Get updated list of interactive elements |
+| ax_set_value | label, value | Set the value of an element |
+| ax_action | axAction, label | Perform any AX action (e.g. AXPress, AXShowMenu) |
+| ax_info | (none) | Get app info (windows, menu bar) |
+
+## Examples
+
+Click a button:
+\`\`\`tool
+{"action": "ax_click", "label": "Save"}
+\`\`\`
+
+Type into a focused field:
+\`\`\`tool
+{"action": "ax_type", "text": "Hello world"}
+\`\`\`
+
+Focus a text field then type:
+\`\`\`tool
+{"action": "ax_focus", "label": "Search"}
+\`\`\`
+\`\`\`tool
+{"action": "ax_type", "text": "my search query"}
+\`\`\`
+
+Perform a specific AX action:
+\`\`\`tool
+{"action": "ax_action", "axAction": "AXShowMenu", "label": "File"}
+\`\`\`
+
+Get fresh element list:
+\`\`\`tool
+{"action": "ax_elements"}
+\`\`\`
+
+## Important Notes
+- Use the Interactive Elements list below to find element names/labels
+- After performing actions that change the UI, use ax_elements to refresh the element list
+- Elements are identified by their "name" (title or description)
+- If a click fails by label, try using ax_action with "AXPress" directly
+- For text input, first ax_focus the field, then ax_type the text
+- Be concise and helpful. Explain what you are doing before each action.
+${appInfoSection}${elementsSection}${treeSection}${harnessSection}`;
 }
