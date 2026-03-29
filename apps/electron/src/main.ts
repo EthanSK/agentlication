@@ -4,7 +4,7 @@ import * as fs from "fs";
 import * as os from "os";
 import { execFileSync, execSync } from "child_process";
 import { IPC } from "@agentlication/contracts";
-import type { AppProfile, TargetApp, CdpPageInfo, StatusMessage, StatusIcon, SourceRepoFindResult, SourceCloneResult } from "@agentlication/contracts";
+import type { AppProfile, TargetApp, CdpPageInfo, StatusMessage, StatusIcon, SourceRepoFindResult, SourceCloneResult, AgentAction, AgentActionResult } from "@agentlication/contracts";
 import { AgentService } from "./agent-service";
 import { CdpService } from "./cdp-service";
 import { scanElectronApps, launchAppWithDebugging } from "./app-scanner";
@@ -299,6 +299,47 @@ ${appData.name} is an Electron application located at ${appData.path}.
     return cdpService.listTargets();
   });
 
+  // ── CDP action handlers ───────────────────────────────────────
+  ipcMain.handle(IPC.CDP_CLICK, async (_event, selector: string) => {
+    return cdpService.clickElement(selector);
+  });
+
+  ipcMain.handle(IPC.CDP_CLICK_TEXT, async (_event, text: string, tagFilter?: string) => {
+    return cdpService.clickByText(text, tagFilter);
+  });
+
+  ipcMain.handle(IPC.CDP_TYPE, async (_event, selector: string, text: string) => {
+    return cdpService.typeIntoElement(selector, text);
+  });
+
+  ipcMain.handle(IPC.CDP_GET_ELEMENTS, async () => {
+    return cdpService.getInteractiveElements();
+  });
+
+  ipcMain.handle(IPC.CDP_GET_A11Y_TREE, async (_event, depth?: number) => {
+    return cdpService.getAccessibilityTree(depth);
+  });
+
+  ipcMain.handle(IPC.CDP_SCREENSHOT, async () => {
+    return cdpService.captureScreenshot();
+  });
+
+  ipcMain.handle(IPC.CDP_PRESS_KEY, async (_event, key: string) => {
+    return cdpService.pressKey(key);
+  });
+
+  ipcMain.handle(IPC.CDP_SCROLL, async (_event, selector: string) => {
+    return cdpService.scrollToElement(selector);
+  });
+
+  ipcMain.handle(IPC.CDP_NAVIGATE, async (_event, url: string) => {
+    return cdpService.navigate(url);
+  });
+
+  ipcMain.handle(IPC.CDP_EXECUTE_ACTION, async (_event, action: AgentAction): Promise<AgentActionResult> => {
+    return cdpService.executeAction(action);
+  });
+
   ipcMain.handle(IPC.CDP_GET_INFO, async (): Promise<CdpPageInfo | null> => {
     if (!cdpService.isConnected()) return null;
     try {
@@ -473,7 +514,7 @@ ${appData.name} is an Electron application located at ${appData.path}.
     }
   );
 
-  // ── Companion agent handler (with HARNESS.md + DOM context) ────
+  // ── Companion agent handler (with HARNESS.md + actions context) ──
   ipcMain.handle(
     IPC.COMPANION_AGENT_SEND,
     async (
@@ -495,55 +536,11 @@ ${appData.name} is an Electron application located at ${appData.path}.
         // Non-critical
       }
 
-      // Get DOM snapshot via CDP if connected
-      let domSnapshot = "";
-      let pageInfo: CdpPageInfo | null = null;
-      if (cdpService.isConnected()) {
-        try {
-          pageInfo = await cdpService.getPageInfo();
-        } catch {
-          // Non-critical
-        }
-        try {
-          domSnapshot = await cdpService.getDOM();
-        } catch {
-          // Non-critical
-        }
-      }
-
-      // Build an enriched system prompt
-      const domSection = domSnapshot
-        ? `\n\n## Current DOM Snapshot\n\`\`\`html\n${domSnapshot.slice(0, 50000)}\n\`\`\``
-        : "\n\n(No DOM snapshot available -- CDP not connected)";
-
-      const pageInfoSection = pageInfo
-        ? `\n\n## Page Info\n- Title: ${pageInfo.title}\n- URL: ${pageInfo.url}\n- Framework: ${pageInfo.framework || "unknown"}\n- DOM structure: ${pageInfo.documentStructure}\n- localStorage keys: ${pageInfo.localStorageKeys.join(", ") || "none"}`
-        : "";
-
       const harnessSection = harnessContent
         ? `\n\n## HARNESS.md\n${harnessContent}`
         : "";
 
-      const systemPrompt = `You are a Companion Agent for ${appName}. You can see and interact with the app via Chrome DevTools Protocol (CDP).
-
-You can:
-1. Read the current state of the app (DOM, JS variables, stores)
-2. Execute JavaScript in the app's context
-3. Click buttons, fill forms, navigate
-4. Inject custom UI elements
-
-Available actions (for future use):
-- To click an element: [CLICK: selector]
-- To evaluate JS: [EVAL: code]
-- To type text: [TYPE: selector, text]
-
-When you need to interact with the app, output JavaScript code in a \`\`\`js\`\`\` code block.
-The code will be executed in the app's renderer process via CDP.
-
-Be concise and helpful. Match the app's existing design when injecting UI.
-${harnessSection}${pageInfoSection}${domSection}`;
-
-      // Send to the agent with the enriched system prompt
+      // Send via the main agent pipeline which handles tool-block parsing
       const onEvent = (event: unknown) => {
         mainWindow?.webContents.send(IPC.AGENT_EVENT, event);
         if (companionWindow && !companionWindow.isDestroyed()) {
@@ -551,10 +548,13 @@ ${harnessSection}${pageInfoSection}${domSection}`;
         }
       };
 
-      return agentService.sendWithSystemPrompt(
+      // Use the action-based send which auto-builds system prompt with
+      // interactive elements + a11y tree + tool-block parsing
+      return agentService.sendCompanion(
         message,
         modelId,
-        systemPrompt,
+        appName,
+        harnessSection,
         onEvent
       );
     }

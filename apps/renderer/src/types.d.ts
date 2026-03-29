@@ -8,6 +8,9 @@ import type {
   StatusMessage,
   SourceRepoFindResult,
   SourceCloneResult,
+  AgentAction,
+  AgentActionResult,
+  InteractiveElement,
 } from "@agentlication/contracts";
 
 interface AgentlicationAPI {
@@ -22,6 +25,16 @@ interface AgentlicationAPI {
   cdpEvaluate: (js: string) => Promise<unknown>;
   cdpListTargets: () => Promise<CdpTarget[]>;
   cdpGetInfo: () => Promise<CdpPageInfo | null>;
+  cdpClick: (selector: string) => Promise<AgentActionResult>;
+  cdpClickText: (text: string, tagFilter?: string) => Promise<AgentActionResult>;
+  cdpType: (selector: string, text: string) => Promise<AgentActionResult>;
+  cdpGetElements: () => Promise<InteractiveElement[]>;
+  cdpGetA11yTree: (depth?: number) => Promise<string>;
+  cdpScreenshot: () => Promise<string>;
+  cdpPressKey: (key: string) => Promise<AgentActionResult>;
+  cdpScroll: (selector: string) => Promise<AgentActionResult>;
+  cdpNavigate: (url: string) => Promise<AgentActionResult>;
+  cdpExecuteAction: (action: AgentAction) => Promise<AgentActionResult>;
   agentSend: (message: string, modelId: string) => Promise<void>;
   agentSendHub: (message: string, modelId: string, systemPrompt: string) => Promise<void>;
   agentCancel: () => Promise<void>;

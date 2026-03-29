@@ -1,7 +1,15 @@
 import CDP from "chrome-remote-interface";
 import { execFileSync, spawn } from "child_process";
 import * as http from "http";
-import type { CdpTarget, CdpPageInfo, StatusLevel, StatusIcon } from "@agentlication/contracts";
+import type {
+  CdpTarget,
+  CdpPageInfo,
+  StatusLevel,
+  StatusIcon,
+  AgentAction,
+  AgentActionResult,
+  InteractiveElement,
+} from "@agentlication/contracts";
 
 export type StatusCallback = (text: string, level: StatusLevel, icon?: StatusIcon) => void;
 
@@ -242,6 +250,621 @@ export class CdpService {
         documentStructure: "",
       };
     }
+  }
+
+  // ── CDP Action Methods ─────────────────────────────────────────
+
+  /**
+   * Click an element by CSS selector.
+   * Uses Runtime.evaluate with mousedown/mouseup/click sequence.
+   */
+  async clickElement(selector: string): Promise<AgentActionResult> {
+    if (!this.client) throw new Error("CDP not connected");
+
+    const result = await this.client.Runtime.evaluate({
+      expression: `
+        (function() {
+          const el = document.querySelector(${JSON.stringify(selector)});
+          if (!el) return JSON.stringify({ success: false, error: 'Element not found: ${selector.replace(/'/g, "\\'")}' });
+
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          el.focus();
+
+          el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+          el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+          el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+          return JSON.stringify({ success: true, data: { tagName: el.tagName, text: (el.textContent || '').trim().substring(0, 80) } });
+        })()
+      `,
+      returnByValue: true,
+      awaitPromise: false,
+    });
+
+    if (result.exceptionDetails) {
+      return { success: false, error: result.exceptionDetails.text };
+    }
+    return JSON.parse(result.result.value as string);
+  }
+
+  /**
+   * Click an element by its visible text content.
+   */
+  async clickByText(text: string, tagFilter?: string): Promise<AgentActionResult> {
+    if (!this.client) throw new Error("CDP not connected");
+
+    const result = await this.client.Runtime.evaluate({
+      expression: `
+        (function() {
+          var tag = ${JSON.stringify(tagFilter || '*')};
+          var elements = document.querySelectorAll(tag);
+          for (var i = 0; i < elements.length; i++) {
+            var el = elements[i];
+            var elText = (el.textContent || '').trim();
+            if (elText === ${JSON.stringify(text)} || elText.includes(${JSON.stringify(text)})) {
+              el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              el.focus();
+              el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+              el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+              el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+              return JSON.stringify({ success: true, data: { tagName: el.tagName, text: elText.substring(0, 80) } });
+            }
+          }
+          return JSON.stringify({ success: false, error: 'No element with text: ' + ${JSON.stringify(text)} });
+        })()
+      `,
+      returnByValue: true,
+      awaitPromise: false,
+    });
+
+    if (result.exceptionDetails) {
+      return { success: false, error: result.exceptionDetails.text };
+    }
+    return JSON.parse(result.result.value as string);
+  }
+
+  /**
+   * Type text into an element by CSS selector.
+   * Uses the React native input setter trick for framework compatibility.
+   */
+  async typeIntoElement(selector: string, text: string): Promise<AgentActionResult> {
+    if (!this.client) throw new Error("CDP not connected");
+
+    const result = await this.client.Runtime.evaluate({
+      expression: `
+        (function() {
+          var el = document.querySelector(${JSON.stringify(selector)});
+          if (!el) return JSON.stringify({ success: false, error: 'Element not found: ${selector.replace(/'/g, "\\'")}' });
+
+          el.focus();
+
+          // Use native setter trick for React/Vue/Angular compatibility
+          var nativeSetter = Object.getOwnPropertyDescriptor(
+            window.HTMLInputElement.prototype, 'value'
+          );
+          if (!nativeSetter) {
+            nativeSetter = Object.getOwnPropertyDescriptor(
+              window.HTMLTextAreaElement.prototype, 'value'
+            );
+          }
+
+          if (nativeSetter && nativeSetter.set) {
+            nativeSetter.set.call(el, ${JSON.stringify(text)});
+          } else {
+            el.value = ${JSON.stringify(text)};
+          }
+
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+
+          return JSON.stringify({ success: true });
+        })()
+      `,
+      returnByValue: true,
+      awaitPromise: false,
+    });
+
+    if (result.exceptionDetails) {
+      return { success: false, error: result.exceptionDetails.text };
+    }
+    return JSON.parse(result.result.value as string);
+  }
+
+  /**
+   * Evaluate arbitrary JavaScript in the connected page and return the result.
+   */
+  async evaluateExpression(expression: string): Promise<AgentActionResult> {
+    if (!this.client) throw new Error("CDP not connected");
+
+    const result = await this.client.Runtime.evaluate({
+      expression,
+      returnByValue: true,
+      awaitPromise: true,
+    });
+
+    if (result.exceptionDetails) {
+      return { success: false, error: result.exceptionDetails.text || "Evaluation failed" };
+    }
+
+    return { success: true, data: result.result.value };
+  }
+
+  /**
+   * Get all interactive elements on the page as a numbered list.
+   */
+  async getInteractiveElements(): Promise<InteractiveElement[]> {
+    if (!this.client) throw new Error("CDP not connected");
+
+    const result = await this.client.Runtime.evaluate({
+      expression: `
+        (function() {
+          var interactable =
+            'a, button, input, select, textarea, [role="button"], ' +
+            '[role="link"], [role="checkbox"], [role="radio"], [role="tab"], ' +
+            '[role="menuitem"], [role="switch"], [role="slider"], ' +
+            '[onclick], [tabindex]:not([tabindex="-1"])';
+
+          var elements = document.querySelectorAll(interactable);
+          var results = [];
+
+          for (var i = 0; i < elements.length; i++) {
+            var el = elements[i];
+            var rect = el.getBoundingClientRect();
+            if (rect.width === 0 || rect.height === 0) continue;
+            // Skip elements hidden via display/visibility
+            var style = window.getComputedStyle(el);
+            if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') continue;
+
+            results.push({
+              index: results.length,
+              tag: el.tagName.toLowerCase(),
+              type: el.getAttribute('type') || undefined,
+              role: el.getAttribute('role') || undefined,
+              text: (el.textContent || '').trim().substring(0, 80),
+              ariaLabel: el.getAttribute('aria-label') || undefined,
+              placeholder: el.getAttribute('placeholder') || undefined,
+              selector: buildUniqueSelector(el),
+              value: el.value || undefined,
+              disabled: el.disabled || false,
+              checked: el.checked || undefined,
+              rect: {
+                x: Math.round(rect.x),
+                y: Math.round(rect.y),
+                w: Math.round(rect.width),
+                h: Math.round(rect.height)
+              },
+            });
+          }
+
+          return JSON.stringify(results);
+
+          function buildUniqueSelector(el) {
+            if (el.id) return '#' + CSS.escape(el.id);
+            var testId = el.getAttribute('data-testid');
+            if (testId) return '[data-testid="' + testId + '"]';
+            // Build a path with tag + classes
+            var path = el.tagName.toLowerCase();
+            if (el.className && typeof el.className === 'string') {
+              var cls = el.className.trim().split(/\\s+/).slice(0, 2);
+              if (cls.length) {
+                path += '.' + cls.map(function(c) { return CSS.escape(c); }).join('.');
+              }
+            }
+            // If not unique, add nth-child
+            if (el.parentElement) {
+              var siblings = el.parentElement.querySelectorAll(':scope > ' + path.split('.')[0]);
+              if (siblings.length > 1) {
+                var idx = Array.prototype.indexOf.call(el.parentElement.children, el) + 1;
+                path += ':nth-child(' + idx + ')';
+              }
+            }
+            return path;
+          }
+        })()
+      `,
+      returnByValue: true,
+    });
+
+    if (result.exceptionDetails) {
+      throw new Error(result.exceptionDetails.text || "Failed to get interactive elements");
+    }
+
+    return JSON.parse(result.result.value as string);
+  }
+
+  /**
+   * Get the CDP accessibility tree as a compact text representation.
+   */
+  async getAccessibilityTree(depth?: number): Promise<string> {
+    if (!this.client) throw new Error("CDP not connected");
+
+    await this.client.Accessibility.enable();
+    const { nodes } = await this.client.Accessibility.getFullAXTree({
+      depth: depth ?? 5,
+    });
+
+    // Format as a compact tree string
+    const lines: string[] = [];
+    const nodeMap = new Map<string, (typeof nodes)[0]>();
+    for (const n of nodes) {
+      nodeMap.set(n.nodeId, n);
+    }
+
+    const formatNode = (node: (typeof nodes)[0], indent: number) => {
+      if (node.ignored) return;
+      const prefix = "  ".repeat(indent);
+      const role = node.role?.value || "?";
+      const name = node.name?.value || "";
+      const value = node.value?.value;
+
+      let line = `${prefix}${role}`;
+      if (name) line += ` "${name}"`;
+      if (value && typeof value === "string" && value.length < 80) {
+        line += ` val="${value}"`;
+      }
+
+      // Add state properties
+      for (const prop of node.properties || []) {
+        if (prop.name === "disabled" && prop.value?.value) {
+          line += " [disabled]";
+        }
+        if (prop.name === "checked") {
+          line += ` [checked=${prop.value?.value}]`;
+        }
+        if (prop.name === "expanded") {
+          line += ` [expanded=${prop.value?.value}]`;
+        }
+        if (prop.name === "selected" && prop.value?.value) {
+          line += " [selected]";
+        }
+        if (prop.name === "focused" && prop.value?.value) {
+          line += " [focused]";
+        }
+      }
+
+      lines.push(line);
+
+      for (const childId of node.childIds || []) {
+        const child = nodeMap.get(childId);
+        if (child) formatNode(child, indent + 1);
+      }
+    };
+
+    // Find the root (no parentId) and start formatting
+    const root = nodes.find((n) => !n.parentId);
+    if (root) formatNode(root, 0);
+
+    return lines.join("\n");
+  }
+
+  /**
+   * Capture a screenshot of the connected page via Page.captureScreenshot.
+   * Returns base64-encoded PNG data.
+   */
+  async captureScreenshot(): Promise<string> {
+    if (!this.client) throw new Error("CDP not connected");
+
+    const { data } = await this.client.Page.captureScreenshot({
+      format: "png",
+    });
+    return data;
+  }
+
+  /**
+   * Scroll an element into view by CSS selector.
+   */
+  async scrollToElement(selector: string): Promise<AgentActionResult> {
+    if (!this.client) throw new Error("CDP not connected");
+
+    const result = await this.client.Runtime.evaluate({
+      expression: `
+        (function() {
+          var el = document.querySelector(${JSON.stringify(selector)});
+          if (!el) return JSON.stringify({ success: false, error: 'Element not found: ${selector.replace(/'/g, "\\'")}' });
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          return JSON.stringify({ success: true });
+        })()
+      `,
+      returnByValue: true,
+    });
+
+    if (result.exceptionDetails) {
+      return { success: false, error: result.exceptionDetails.text };
+    }
+    return JSON.parse(result.result.value as string);
+  }
+
+  /**
+   * Press a keyboard key (Enter, Tab, Escape, etc.) via Input.dispatchKeyEvent.
+   */
+  async pressKey(key: string): Promise<AgentActionResult> {
+    if (!this.client) throw new Error("CDP not connected");
+
+    const keyMap: Record<string, { code: string; keyCode: number }> = {
+      Enter:     { code: "Enter",     keyCode: 13 },
+      Tab:       { code: "Tab",       keyCode: 9 },
+      Escape:    { code: "Escape",    keyCode: 27 },
+      Backspace: { code: "Backspace", keyCode: 8 },
+      Delete:    { code: "Delete",    keyCode: 46 },
+      ArrowUp:   { code: "ArrowUp",   keyCode: 38 },
+      ArrowDown: { code: "ArrowDown", keyCode: 40 },
+      ArrowLeft: { code: "ArrowLeft", keyCode: 37 },
+      ArrowRight:{ code: "ArrowRight",keyCode: 39 },
+      Home:      { code: "Home",      keyCode: 36 },
+      End:       { code: "End",       keyCode: 35 },
+      PageUp:    { code: "PageUp",    keyCode: 33 },
+      PageDown:  { code: "PageDown",  keyCode: 34 },
+      Space:     { code: "Space",     keyCode: 32 },
+    };
+
+    const mapped = keyMap[key];
+    const code = mapped?.code || key;
+    const keyCode = mapped?.keyCode || key.charCodeAt(0);
+
+    try {
+      await this.client.Input.dispatchKeyEvent({
+        type: "keyDown",
+        key,
+        code,
+        windowsVirtualKeyCode: keyCode,
+        nativeVirtualKeyCode: keyCode,
+      });
+      await this.client.Input.dispatchKeyEvent({
+        type: "keyUp",
+        key,
+        code,
+        windowsVirtualKeyCode: keyCode,
+        nativeVirtualKeyCode: keyCode,
+      });
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: String(err) };
+    }
+  }
+
+  /**
+   * Navigate to a URL via Page.navigate.
+   */
+  async navigate(url: string): Promise<AgentActionResult> {
+    if (!this.client) throw new Error("CDP not connected");
+
+    try {
+      const result = await this.client.Page.navigate({ url });
+      if (result.errorText) {
+        return { success: false, error: result.errorText };
+      }
+      return { success: true, data: { frameId: result.frameId } };
+    } catch (err) {
+      return { success: false, error: String(err) };
+    }
+  }
+
+  /**
+   * Wait for an element matching the selector to appear, polling until timeout.
+   */
+  async waitForElement(selector: string, timeoutMs: number = 5000): Promise<AgentActionResult> {
+    if (!this.client) throw new Error("CDP not connected");
+
+    const startTime = Date.now();
+    const pollInterval = 200;
+
+    while (Date.now() - startTime < timeoutMs) {
+      const result = await this.client.Runtime.evaluate({
+        expression: `!!document.querySelector(${JSON.stringify(selector)})`,
+        returnByValue: true,
+      });
+
+      if (result.result.value === true) {
+        return { success: true, data: { elapsed: Date.now() - startTime } };
+      }
+
+      await this.sleep(pollInterval);
+    }
+
+    return { success: false, error: `Element ${selector} did not appear within ${timeoutMs}ms` };
+  }
+
+  // ── CDP-level fallback methods ────────────────────────────────
+
+  /**
+   * Click an element using DOM.getBoxModel + Input.dispatchMouseEvent.
+   * Fallback for apps that block synthetic events from Runtime.evaluate.
+   */
+  async clickElementViaCdp(selector: string): Promise<AgentActionResult> {
+    if (!this.client) throw new Error("CDP not connected");
+
+    try {
+      await this.client.DOM.enable();
+      const { root } = await this.client.DOM.getDocument({ depth: 0 });
+      const { nodeId } = await this.client.DOM.querySelector({
+        nodeId: root.nodeId,
+        selector,
+      });
+
+      if (!nodeId) {
+        return { success: false, error: `Element not found: ${selector}` };
+      }
+
+      await this.client.DOM.scrollIntoViewIfNeeded({ nodeId });
+      const { model } = await this.client.DOM.getBoxModel({ nodeId });
+
+      const content = model.content;
+      const centerX = (content[0] + content[2]) / 2;
+      const centerY = (content[1] + content[5]) / 2;
+
+      await this.client.Input.dispatchMouseEvent({
+        type: "mousePressed",
+        x: centerX,
+        y: centerY,
+        button: "left",
+        clickCount: 1,
+      });
+      await this.client.Input.dispatchMouseEvent({
+        type: "mouseReleased",
+        x: centerX,
+        y: centerY,
+        button: "left",
+        clickCount: 1,
+      });
+
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: String(err) };
+    }
+  }
+
+  /**
+   * Type into the currently focused element using Input.insertText.
+   * Fallback for apps where Runtime.evaluate input setting fails.
+   */
+  async typeViaCdp(text: string): Promise<AgentActionResult> {
+    if (!this.client) throw new Error("CDP not connected");
+
+    try {
+      await this.client.Input.insertText({ text });
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: String(err) };
+    }
+  }
+
+  // ── Action dispatch ───────────────────────────────────────────
+
+  /**
+   * Execute a structured AgentAction. This is the main dispatcher
+   * called by the tool-block parser.
+   */
+  async executeAction(action: AgentAction): Promise<AgentActionResult> {
+    switch (action.action) {
+      case "click":
+        if (action.selector) {
+          const result = await this.clickElement(action.selector);
+          // If synthetic click failed, try CDP-level fallback
+          if (!result.success) {
+            return this.clickElementViaCdp(action.selector);
+          }
+          return result;
+        }
+        if (action.x !== undefined && action.y !== undefined) {
+          return this.clickAtCoordinates(action.x, action.y);
+        }
+        return { success: false, error: "click requires selector or x/y coordinates" };
+
+      case "click_text":
+        if (!action.text) return { success: false, error: "click_text requires text" };
+        return this.clickByText(action.text, action.tagFilter);
+
+      case "type":
+        if (!action.selector) return { success: false, error: "type requires selector" };
+        if (action.text === undefined) return { success: false, error: "type requires text" };
+        return this.typeIntoElement(action.selector, action.text);
+
+      case "eval":
+        if (!action.expression) return { success: false, error: "eval requires expression" };
+        return this.evaluateExpression(action.expression);
+
+      case "get_elements":
+        try {
+          const elements = await this.getInteractiveElements();
+          return { success: true, data: elements };
+        } catch (err) {
+          return { success: false, error: String(err) };
+        }
+
+      case "get_a11y_tree":
+        try {
+          const tree = await this.getAccessibilityTree(action.depth);
+          return { success: true, data: tree };
+        } catch (err) {
+          return { success: false, error: String(err) };
+        }
+
+      case "screenshot":
+        try {
+          const screenshot = await this.captureScreenshot();
+          return { success: true, data: { base64: screenshot } };
+        } catch (err) {
+          return { success: false, error: String(err) };
+        }
+
+      case "scroll":
+        if (!action.selector) return { success: false, error: "scroll requires selector" };
+        return this.scrollToElement(action.selector);
+
+      case "press_key":
+        if (!action.key) return { success: false, error: "press_key requires key" };
+        return this.pressKey(action.key);
+
+      case "navigate":
+        if (!action.text) return { success: false, error: "navigate requires text (URL)" };
+        return this.navigate(action.text);
+
+      case "wait":
+        if (!action.selector) return { success: false, error: "wait requires selector" };
+        return this.waitForElement(action.selector, action.timeout);
+
+      case "select":
+        if (!action.selector) return { success: false, error: "select requires selector" };
+        if (!action.value) return { success: false, error: "select requires value" };
+        return this.selectOption(action.selector, action.value);
+
+      default:
+        return { success: false, error: `Unknown action: ${action.action}` };
+    }
+  }
+
+  /**
+   * Click at specific coordinates using Input.dispatchMouseEvent.
+   */
+  private async clickAtCoordinates(x: number, y: number): Promise<AgentActionResult> {
+    if (!this.client) throw new Error("CDP not connected");
+
+    try {
+      await this.client.Input.dispatchMouseEvent({
+        type: "mousePressed",
+        x,
+        y,
+        button: "left",
+        clickCount: 1,
+      });
+      await this.client.Input.dispatchMouseEvent({
+        type: "mouseReleased",
+        x,
+        y,
+        button: "left",
+        clickCount: 1,
+      });
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: String(err) };
+    }
+  }
+
+  /**
+   * Select an option from a <select> element.
+   */
+  private async selectOption(selector: string, value: string): Promise<AgentActionResult> {
+    if (!this.client) throw new Error("CDP not connected");
+
+    const result = await this.client.Runtime.evaluate({
+      expression: `
+        (function() {
+          var el = document.querySelector(${JSON.stringify(selector)});
+          if (!el) return JSON.stringify({ success: false, error: 'Element not found' });
+          if (el.tagName !== 'SELECT') return JSON.stringify({ success: false, error: 'Element is not a <select>' });
+
+          el.value = ${JSON.stringify(value)};
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+          return JSON.stringify({ success: true });
+        })()
+      `,
+      returnByValue: true,
+    });
+
+    if (result.exceptionDetails) {
+      return { success: false, error: result.exceptionDetails.text };
+    }
+    return JSON.parse(result.result.value as string);
   }
 
   // ── Private helpers ──────────────────────────────────────────

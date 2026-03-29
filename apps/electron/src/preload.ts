@@ -17,6 +17,16 @@ const IPC = {
   CDP_EVALUATE: "cdp:evaluate",
   CDP_LIST_TARGETS: "cdp:list-targets",
   CDP_GET_INFO: "cdp:get-info",
+  CDP_CLICK: "cdp:click",
+  CDP_CLICK_TEXT: "cdp:click-text",
+  CDP_TYPE: "cdp:type",
+  CDP_GET_ELEMENTS: "cdp:get-elements",
+  CDP_GET_A11Y_TREE: "cdp:get-a11y-tree",
+  CDP_SCREENSHOT: "cdp:screenshot",
+  CDP_PRESS_KEY: "cdp:press-key",
+  CDP_SCROLL: "cdp:scroll",
+  CDP_NAVIGATE: "cdp:navigate",
+  CDP_EXECUTE_ACTION: "cdp:execute-action",
   AGENT_SEND: "agent:send",
   AGENT_SEND_HUB: "agent:send-hub",
   AGENT_EVENT: "agent:event",
@@ -48,6 +58,18 @@ contextBridge.exposeInMainWorld("agentlication", {
   cdpEvaluate: (js: string) => ipcRenderer.invoke(IPC.CDP_EVALUATE, js),
   cdpListTargets: () => ipcRenderer.invoke(IPC.CDP_LIST_TARGETS),
   cdpGetInfo: () => ipcRenderer.invoke(IPC.CDP_GET_INFO),
+  cdpClick: (selector: string) => ipcRenderer.invoke(IPC.CDP_CLICK, selector),
+  cdpClickText: (text: string, tagFilter?: string) =>
+    ipcRenderer.invoke(IPC.CDP_CLICK_TEXT, text, tagFilter),
+  cdpType: (selector: string, text: string) =>
+    ipcRenderer.invoke(IPC.CDP_TYPE, selector, text),
+  cdpGetElements: () => ipcRenderer.invoke(IPC.CDP_GET_ELEMENTS),
+  cdpGetA11yTree: (depth?: number) => ipcRenderer.invoke(IPC.CDP_GET_A11Y_TREE, depth),
+  cdpScreenshot: () => ipcRenderer.invoke(IPC.CDP_SCREENSHOT),
+  cdpPressKey: (key: string) => ipcRenderer.invoke(IPC.CDP_PRESS_KEY, key),
+  cdpScroll: (selector: string) => ipcRenderer.invoke(IPC.CDP_SCROLL, selector),
+  cdpNavigate: (url: string) => ipcRenderer.invoke(IPC.CDP_NAVIGATE, url),
+  cdpExecuteAction: (action: unknown) => ipcRenderer.invoke(IPC.CDP_EXECUTE_ACTION, action),
 
   // Agent
   agentSend: (message: string, modelId: string) =>

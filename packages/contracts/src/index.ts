@@ -196,6 +196,58 @@ export interface SourceCloneResult {
   error?: string;
 }
 
+// ── Agent action types (CDP tool-use) ────────────────────────────
+
+export type AgentActionKind =
+  | "click"
+  | "type"
+  | "eval"
+  | "click_text"
+  | "select"
+  | "scroll"
+  | "wait"
+  | "screenshot"
+  | "get_elements"
+  | "get_a11y_tree"
+  | "navigate"
+  | "press_key";
+
+export interface AgentAction {
+  action: AgentActionKind;
+  selector?: string;      // CSS selector
+  text?: string;          // Text to type, or text content to find
+  expression?: string;    // JS expression for eval
+  value?: string;         // Value for select
+  key?: string;           // Key for press_key (e.g., "Enter", "Tab")
+  x?: number;             // Coordinates for click
+  y?: number;
+  timeout?: number;       // Max wait time in ms
+  depth?: number;         // Depth for a11y tree
+  tagFilter?: string;     // Tag filter for click_text
+}
+
+export interface AgentActionResult {
+  success: boolean;
+  data?: unknown;
+  error?: string;
+}
+
+/** An interactive element found via getInteractiveElements. */
+export interface InteractiveElement {
+  index: number;
+  tag: string;
+  type?: string;
+  role?: string;
+  text: string;
+  ariaLabel?: string;
+  placeholder?: string;
+  selector: string;
+  value?: string;
+  disabled: boolean;
+  checked?: boolean;
+  rect: { x: number; y: number; w: number; h: number };
+}
+
 // ── IPC channel names ──────────────────────────────────────────
 
 export const IPC = {
@@ -213,6 +265,16 @@ export const IPC = {
   CDP_EVALUATE: "cdp:evaluate",
   CDP_LIST_TARGETS: "cdp:list-targets",
   CDP_GET_INFO: "cdp:get-info",
+  CDP_CLICK: "cdp:click",
+  CDP_CLICK_TEXT: "cdp:click-text",
+  CDP_TYPE: "cdp:type",
+  CDP_GET_ELEMENTS: "cdp:get-elements",
+  CDP_GET_A11Y_TREE: "cdp:get-a11y-tree",
+  CDP_SCREENSHOT: "cdp:screenshot",
+  CDP_PRESS_KEY: "cdp:press-key",
+  CDP_SCROLL: "cdp:scroll",
+  CDP_NAVIGATE: "cdp:navigate",
+  CDP_EXECUTE_ACTION: "cdp:execute-action",
 
   // Agent
   AGENT_SEND: "agent:send",

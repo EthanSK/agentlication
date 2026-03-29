@@ -105,6 +105,32 @@ export default function ChatPanel({
             setStreaming(false);
             break;
           }
+          case "agent:tool-result": {
+            const { action, result } = event.payload as {
+              action?: { action: string; selector?: string; text?: string };
+              result?: { success: boolean; data?: unknown; error?: string };
+            };
+            if (action && result) {
+              const actionLabel = action.action + (action.selector ? ` (${action.selector})` : action.text ? ` ("${action.text}")` : "");
+              const statusText = result.success
+                ? `Action executed: ${actionLabel}`
+                : `Action failed: ${actionLabel} - ${result.error || "unknown error"}`;
+              setFeed((items) => [
+                ...items,
+                {
+                  kind: "status",
+                  data: {
+                    id: nextId(),
+                    text: statusText,
+                    level: result.success ? "success" : "error",
+                    icon: result.success ? "success" : "error",
+                    timestamp: Date.now(),
+                  } as StatusMessage,
+                },
+              ]);
+            }
+            break;
+          }
           case "agent:error": {
             const { message } = event.payload as { message: string };
             setFeed((items) => [

@@ -252,6 +252,34 @@ Reviewed the full project state and discussed next steps with Ethan:
   7. Website / landing page at agentlication.ai
 - Awaiting Ethan's decision on which area to tackle next.
 
+## 2026-03-28 — CDP Action Execution Implementation (Phase 1 & 2)
+
+Implemented full CDP action execution — the companion agent can now interact with target apps (click, type, evaluate JS, screenshot, navigate, etc.):
+
+- **Agent action types** (contracts): Added `AgentActionKind` (click, type, eval, click_text, select, scroll, wait, screenshot, get_elements, get_a11y_tree, navigate, press_key), `AgentAction` interface, `AgentActionResult` interface, `InteractiveElement` interface.
+- **CDP type definitions** (`chrome-remote-interface.d.ts`): Extended from just RuntimeDomain to include DOM, Input, Accessibility, and Page domain types with full parameter/return types for getDocument, querySelector, getBoxModel, scrollIntoViewIfNeeded, dispatchMouseEvent, dispatchKeyEvent, insertText, getFullAXTree, captureScreenshot, navigate, etc.
+- **CdpService action methods** (`cdp-service.ts`): 15+ new methods:
+  - `clickElement(selector)` — Runtime.evaluate with mousedown/mouseup/click sequence
+  - `clickByText(text, tagFilter?)` — find and click element by visible text content
+  - `typeIntoElement(selector, text)` — type with React native input setter trick for framework compatibility
+  - `evaluateExpression(expression)` — eval arbitrary JS and return structured result
+  - `getInteractiveElements()` — scan all interactive elements, returns numbered list with selectors, text, roles, positions, disabled/checked state
+  - `getAccessibilityTree(depth?)` — CDP Accessibility.getFullAXTree formatted as compact indented text
+  - `captureScreenshot()` — Page.captureScreenshot returning base64 PNG
+  - `scrollToElement(selector)` — scrollIntoView
+  - `pressKey(key)` — Input.dispatchKeyEvent with key map for Enter, Tab, Escape, Arrow keys, etc.
+  - `navigate(url)` — Page.navigate
+  - `waitForElement(selector, timeout)` — poll until element appears
+  - `clickElementViaCdp(selector)` — DOM.getBoxModel + Input.dispatchMouseEvent fallback for apps blocking synthetic events
+  - `typeViaCdp(text)` — Input.insertText fallback
+  - `selectOption(selector, value)` — select dropdown option
+  - `executeAction(action)` — main dispatcher that routes AgentAction to the correct method with automatic fallback (e.g., clicks fall back to CDP-level if Runtime.evaluate fails)
+- **Tool-block parser** (agent-service.ts): Parses ` ```tool ` JSON blocks from the agent's streaming response. Accumulates full text, regex-matches complete tool blocks, deduplicates by raw string to avoid double-execution, and calls cdpService.executeAction() for each parsed action.
+- **Updated system prompt**: Replaced raw DOM snapshot with interactive elements list + accessibility tree. System prompt now documents all 12 available actions with parameter tables and examples. Agent sees numbered elements like `[0] button "Save" selector:#save-btn @(450,320,120x40)`.
+- **Companion agent pipeline** (`sendCompanion` method): New method in AgentService that builds enriched system prompt with interactive elements + a11y tree + HARNESS.md, with full tool-block parsing in the streaming handler.
+- **IPC wiring**: 10 new IPC channels (cdp:click, cdp:click-text, cdp:type, cdp:get-elements, cdp:get-a11y-tree, cdp:screenshot, cdp:press-key, cdp:scroll, cdp:navigate, cdp:execute-action) added to contracts, preload, main.ts, and renderer types.
+- **UI tool-result display**: ChatPanel now handles `agent:tool-result` events, showing inline status messages for executed actions (green check for success, red X for failure) with action name and selector.
+
 ## 2026-03-28 — CDP & Native App Support Research
 
 Deep research session exploring implementation approaches for CDP action execution and native macOS app support:
