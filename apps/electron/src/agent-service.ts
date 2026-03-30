@@ -150,6 +150,7 @@ class ClaudeProvider implements Provider {
 
       let buffer = "";
       let doneSent = false;
+      let hasEmittedContent = false;
 
       this.process.stdout?.on("data", (data: Buffer) => {
         buffer += data.toString();
@@ -160,8 +161,14 @@ class ClaudeProvider implements Provider {
           if (!line.trim()) continue;
           try {
             const parsed = JSON.parse(line);
-            // Handle various stream-json event types from Claude CLI
+            // Handle various stream-json event types from Claude CLI.
+            // The stream-json format can emit content via three paths:
+            //   1. content_block_delta — incremental streaming chunks
+            //   2. assistant — full message with all content blocks
+            //   3. result — final result text
+            // We must only emit content ONCE. Track via hasEmittedContent.
             if (parsed.type === "content_block_delta") {
+              hasEmittedContent = true;
               const text = parsed.delta?.text || "";
               if (text) {
                 onEvent({
@@ -171,21 +178,29 @@ class ClaudeProvider implements Provider {
                 });
               }
             } else if (parsed.type === "assistant" && parsed.message?.content) {
-              // Full message event — extract text blocks
-              for (const block of parsed.message.content) {
-                if (block.type === "text" && block.text) {
-                  onEvent({
-                    kind: "agent:chunk",
-                    payload: { text: block.text },
-                    timestamp: Date.now(),
-                  });
+              // Full message event — skip if we already emitted content.
+              // Note: Claude CLI may emit multiple assistant events — the first
+              // is often partial with empty text blocks. Only mark as emitted
+              // once we actually send content to the consumer.
+              if (!hasEmittedContent) {
+                for (const block of parsed.message.content) {
+                  if (block.type === "text" && block.text) {
+                    hasEmittedContent = true;
+                    onEvent({
+                      kind: "agent:chunk",
+                      payload: { text: block.text },
+                      timestamp: Date.now(),
+                    });
+                  }
                 }
               }
             } else if (
               parsed.type === "message_stop" ||
               parsed.type === "result"
             ) {
-              if (parsed.result) {
+              // result event — only emit if no content was emitted yet
+              if (parsed.result && !hasEmittedContent) {
+                hasEmittedContent = true;
                 onEvent({
                   kind: "agent:chunk",
                   payload: { text: parsed.result },
@@ -223,8 +238,8 @@ class ClaudeProvider implements Provider {
       });
 
       this.process.on("close", (code) => {
-        // Flush remaining buffer
-        if (buffer.trim()) {
+        // Flush remaining buffer — only emit if we haven't emitted content yet
+        if (buffer.trim() && !hasEmittedContent) {
           try {
             const parsed = JSON.parse(buffer);
             if (parsed.result) {
