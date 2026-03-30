@@ -348,3 +348,19 @@ Tested the full end-to-end companion chat pipeline programmatically and fixed a 
   3. Evaluate JS: Agent output `eval` tool block, `document.title` returned "Producer Player"
   4. Refresh elements: Agent output `get_elements` tool block, found 30 elements
 - **Bug fixed — duplicate response text**: Claude CLI's `stream-json` format emits content through three paths: `content_block_delta`, `assistant` event, and `result` event. The parser was emitting all three, causing 2-3x duplicated text in chat. Fixed by tracking `hasEmittedContent` flag. Also fixed a subtle edge case where the first `assistant` event has content blocks with undefined text (partial/in-progress), prematurely marking content as emitted and blocking the real response.
+
+## 2026-03-30 — Runtime Patch System
+
+Built the full Runtime Patch System following the detailed plan in `docs/RUNTIME-PATCH-PLAN.md`:
+
+- **PatchService** (`apps/electron/src/patch-service.ts`): Core service for managing persistent patches that modify Electron apps at runtime via CDP. YAML frontmatter parser for `/*--- ... ---*/` blocks in `.patch.js`/`.patch.tsx`/`.patch.css` files. Full CRUD: create, read, update, enable/disable, delete. Injection wrapper with error handling, cleanup support, and deduplication registry (`window.__AGENTLICATION_PATCHES__`). Two-layer CDP injection strategy: `Page.addScriptToEvaluateOnNewDocument` for persistent scripts that survive navigations, plus `Runtime.evaluate` for immediate injection. Priority-based ordering and topological dependency resolution. esbuild TSX compilation pipeline with `.compiled/` cache directory. Git auto-backup with 5-second debounced commits to `~/.agentlication/patches-backup/`.
+
+- **Contracts**: Added `PatchMetadata`, `PatchFile`, `PatchCreateRequest`, `PatchUpdateRequest` interfaces. New types: `PatchFormat` (js/tsx/css), `PatchInjectAt` (document-start/document-ready/document-idle), `PatchStatus`. Extended `AgentActionKind` with 6 patch actions: `create_patch`, `update_patch`, `delete_patch`, `list_patches`, `enable_patch`, `disable_patch`. Added 11 new IPC channels.
+
+- **Agent Integration**: 6 new tool blocks for patch management. `AgentService.executeAction()` routes patch actions to PatchService, CDP actions to CdpService. `buildSystemPromptWithActions()` extended with patch context: current patches list, patch action documentation, examples, and best practices. Companion agent auto-sets `currentAppSlug` for patch routing.
+
+- **CDP Enhancements**: Added `addScriptToEvaluateOnNewDocument()` and `removeScriptToEvaluateOnNewDocument()` to CdpService. React detection script auto-injected on CDP connect. All enabled patches auto-injected after successful CDP connection.
+
+- **IPC & Preload**: All patch handlers wired in `main.ts`. Preload bridge exposes `patchList`, `patchCreate`, `patchUpdate`, `patchDelete`, `patchEnable`, `patchDisable`, `patchGet`, `patchInject`, `patchInjectAll`, `onPatchError`, `onPatchStatus`.
+
+- **Testing**: 26 unit tests passed (YAML parsing, CRUD, priority ordering, enable/disable, deletion). esbuild TSX compilation verified. Live CDP injection tested against VS Code: badge injection, cleanup, re-injection, and `addScriptToEvaluateOnNewDocument` persistence all confirmed working.
