@@ -328,3 +328,23 @@ Recorded and sent a screen demo video showcasing AX Bridge's native macOS app su
   - Finder: Interactive elements detected
 - **ax-bridge commands shown**: `info` (app metadata + windows), `elements --interactive` (numbered interactive element list with roles/names), `tree --depth 3` (hierarchical accessibility tree)
 - **Video sent to Ethan via Telegram**: Used Bot API `sendVideo` endpoint directly (not the plugin reply tool) for proper video rendering with streaming support.
+
+## 2026-03-30 — E2E Companion Chat Pipeline Test & Duplicate Text Fix
+
+Tested the full end-to-end companion chat pipeline programmatically and fixed a critical bug:
+
+- **Test approach**: Wrote a Node.js test script that bypasses Electron IPC and directly uses `CdpService` + `AgentService` from compiled output, connecting to Producer Player via CDP on port 9222.
+- **Pipeline verified**:
+  - CDP reads 30 interactive elements from Producer Player
+  - `buildSystemPromptWithActions()` enriches system prompt with elements + a11y tree + page info
+  - Claude CLI (sonnet) receives full context and responds intelligently
+  - Tool block parser (`parseToolBlocks()`) intercepts ` ```tool ` blocks from streaming output
+  - `CdpService.executeAction()` dispatches actions (click, eval, get_elements, screenshot)
+  - `agent:tool-result` events fire correctly with action/result payloads
+  - `agent:done` event fires on completion
+- **Multi-turn test passed** (4 turns):
+  1. List elements: Agent described 5 elements with purposes (no tool call needed)
+  2. Click button: Agent output `click` tool block, button clicked successfully
+  3. Evaluate JS: Agent output `eval` tool block, `document.title` returned "Producer Player"
+  4. Refresh elements: Agent output `get_elements` tool block, found 30 elements
+- **Bug fixed — duplicate response text**: Claude CLI's `stream-json` format emits content through three paths: `content_block_delta`, `assistant` event, and `result` event. The parser was emitting all three, causing 2-3x duplicated text in chat. Fixed by tracking `hasEmittedContent` flag. Also fixed a subtle edge case where the first `assistant` event has content blocks with undefined text (partial/in-progress), prematurely marking content as emitted and blocking the real response.
