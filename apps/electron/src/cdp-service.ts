@@ -867,6 +867,39 @@ export class CdpService {
     return JSON.parse(result.result.value as string);
   }
 
+  // ── Patch injection helpers ──────────────────────────────────
+
+  /**
+   * Register a script to run on every new document load via Page.addScriptToEvaluateOnNewDocument.
+   * Returns the identifier for later removal.
+   */
+  async addScriptToEvaluateOnNewDocument(source: string): Promise<string> {
+    if (!this.client) throw new Error("CDP not connected");
+
+    await this.client.Page.enable();
+    const { identifier } = await this.client.Page.addScriptToEvaluateOnNewDocument({
+      source,
+    });
+    return identifier;
+  }
+
+  /**
+   * Remove a previously registered script from Page.addScriptToEvaluateOnNewDocument.
+   */
+  async removeScriptToEvaluateOnNewDocument(identifier: string): Promise<void> {
+    if (!this.client) throw new Error("CDP not connected");
+
+    await this.client.Page.removeScriptToEvaluateOnNewDocument({ identifier });
+  }
+
+  /**
+   * Get the raw CDP client for advanced operations.
+   * Used by PatchService for Page domain access.
+   */
+  getClient(): CDP.Client | null {
+    return this.client;
+  }
+
   // ── Private helpers ──────────────────────────────────────────
 
   /**

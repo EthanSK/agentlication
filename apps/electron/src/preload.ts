@@ -39,6 +39,19 @@ const IPC = {
   APP_CLONE_SOURCE: "app:clone-source",
   COMPANION_AGENT_SEND: "companion:agent-send",
 
+  // Patch management
+  PATCH_LIST: "patch:list",
+  PATCH_CREATE: "patch:create",
+  PATCH_UPDATE: "patch:update",
+  PATCH_DELETE: "patch:delete",
+  PATCH_ENABLE: "patch:enable",
+  PATCH_DISABLE: "patch:disable",
+  PATCH_INJECT: "patch:inject",
+  PATCH_INJECT_ALL: "patch:inject-all",
+  PATCH_GET: "patch:get",
+  PATCH_ERROR: "patch:error",
+  PATCH_STATUS: "patch:status",
+
   // Accessibility (native macOS apps)
   AX_TREE: "ax:tree",
   AX_CLICK: "ax:click",
@@ -118,6 +131,36 @@ contextBridge.exposeInMainWorld("agentlication", {
   // Companion agent (with HARNESS.md + DOM context)
   companionAgentSend: (payload: { appName: string; message: string; modelId: string }) =>
     ipcRenderer.invoke(IPC.COMPANION_AGENT_SEND, payload),
+
+  // Patch management
+  patchList: (appSlug: string) =>
+    ipcRenderer.invoke(IPC.PATCH_LIST, appSlug),
+  patchCreate: (req: unknown) =>
+    ipcRenderer.invoke(IPC.PATCH_CREATE, req),
+  patchUpdate: (req: unknown) =>
+    ipcRenderer.invoke(IPC.PATCH_UPDATE, req),
+  patchDelete: (appSlug: string, name: string) =>
+    ipcRenderer.invoke(IPC.PATCH_DELETE, appSlug, name),
+  patchEnable: (appSlug: string, name: string) =>
+    ipcRenderer.invoke(IPC.PATCH_ENABLE, appSlug, name),
+  patchDisable: (appSlug: string, name: string) =>
+    ipcRenderer.invoke(IPC.PATCH_DISABLE, appSlug, name),
+  patchGet: (appSlug: string, name: string) =>
+    ipcRenderer.invoke(IPC.PATCH_GET, appSlug, name),
+  patchInject: (appSlug: string, name: string) =>
+    ipcRenderer.invoke(IPC.PATCH_INJECT, appSlug, name),
+  patchInjectAll: (appSlug: string) =>
+    ipcRenderer.invoke(IPC.PATCH_INJECT_ALL, appSlug),
+  onPatchError: (callback: (error: unknown) => void) => {
+    const handler = (_event: unknown, data: unknown) => callback(data);
+    ipcRenderer.on(IPC.PATCH_ERROR, handler);
+    return () => ipcRenderer.removeListener(IPC.PATCH_ERROR, handler);
+  },
+  onPatchStatus: (callback: (status: unknown) => void) => {
+    const handler = (_event: unknown, data: unknown) => callback(data);
+    ipcRenderer.on(IPC.PATCH_STATUS, handler);
+    return () => ipcRenderer.removeListener(IPC.PATCH_STATUS, handler);
+  },
 
   // Accessibility (native macOS apps)
   axCheckPermission: () => ipcRenderer.invoke(IPC.AX_CHECK_PERMISSION),

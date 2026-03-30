@@ -9,9 +9,10 @@ import {
   ProviderStatusMap,
   PROVIDER_INSTALL_COMMANDS,
 } from "@agentlication/contracts";
-import type { AgentAction, AgentActionResult, InteractiveElement, AXInteractiveElement } from "@agentlication/contracts";
+import type { AgentAction, AgentActionResult, InteractiveElement, AXInteractiveElement, PatchCreateRequest, PatchUpdateRequest } from "@agentlication/contracts";
 import { CdpService } from "./cdp-service";
 import { AccessibilityService } from "./accessibility-service";
+import { PatchService } from "./patch-service";
 
 // ── Provider abstraction ───────────────────────────────────────
 
@@ -486,11 +487,147 @@ export class AgentService {
   };
 
   private currentProvider: Provider | null = null;
+  private patchService: PatchService | null = null;
+  private currentAppSlug: string | null = null;
 
   constructor(
     private cdpService: CdpService,
     private accessibilityService?: AccessibilityService
   ) {}
+
+  /**
+   * Set the PatchService instance for handling patch tool blocks.
+   */
+  setPatchService(patchService: PatchService): void {
+    this.patchService = patchService;
+  }
+
+  /**
+   * Set the current app slug (for routing patch actions).
+   */
+  setCurrentAppSlug(slug: string | null): void {
+    this.currentAppSlug = slug;
+  }
+
+  /**
+   * Execute an action, routing patch actions to PatchService.
+   */
+  private async executeAction(action: AgentAction): Promise<AgentActionResult> {
+    // Route patch actions to PatchService
+    if (this.isPatchAction(action.action)) {
+      return this.executePatchAction(action);
+    }
+    // Route CDP actions to CdpService
+    return this.cdpService.executeAction(action);
+  }
+
+  private isPatchAction(actionKind: string): boolean {
+    return ["create_patch", "update_patch", "delete_patch", "list_patches", "enable_patch", "disable_patch"].includes(actionKind);
+  }
+
+  private async executePatchAction(action: AgentAction): Promise<AgentActionResult> {
+    if (!this.patchService) {
+      return { success: false, error: "PatchService not available" };
+    }
+    if (!this.currentAppSlug) {
+      return { success: false, error: "No app connected (currentAppSlug not set)" };
+    }
+
+    const appSlug = this.currentAppSlug;
+
+    switch (action.action) {
+      case "create_patch": {
+        if (!action.name || !action.code) {
+          return { success: false, error: "create_patch requires 'name' and 'code'" };
+        }
+        const req: PatchCreateRequest = {
+          appSlug,
+          name: action.name,
+          description: action.description || `Patch created by agent: ${action.name}`,
+          format: action.format || "js",
+          code: action.code,
+          priority: action.priority,
+          injectAt: action.inject_at,
+          author: "companion-agent",
+          tags: [],
+        };
+        const result = await this.patchService.createPatch(req);
+        if (result.success) {
+          return { success: true, data: { message: `Patch "${action.name}" created and injected`, patch: result.patch?.metadata } };
+        }
+        return { success: false, error: result.error };
+      }
+
+      case "update_patch": {
+        if (!action.name) {
+          return { success: false, error: "update_patch requires 'name'" };
+        }
+        const req: PatchUpdateRequest = {
+          appSlug,
+          name: action.name,
+          code: action.code,
+          enabled: action.enabled,
+          priority: action.priority,
+          description: action.description,
+        };
+        const result = await this.patchService.updatePatch(req);
+        if (result.success) {
+          return { success: true, data: { message: `Patch "${action.name}" updated`, patch: result.patch?.metadata } };
+        }
+        return { success: false, error: result.error };
+      }
+
+      case "delete_patch": {
+        if (!action.name) {
+          return { success: false, error: "delete_patch requires 'name'" };
+        }
+        const result = await this.patchService.deletePatch(appSlug, action.name);
+        if (result.success) {
+          return { success: true, data: { message: `Patch "${action.name}" deleted` } };
+        }
+        return { success: false, error: result.error };
+      }
+
+      case "list_patches": {
+        const patches = await this.patchService.loadPatches(appSlug);
+        const summary = patches.map(p => ({
+          name: p.metadata.name,
+          description: p.metadata.description,
+          version: p.metadata.version,
+          enabled: p.metadata.enabled,
+          format: p.metadata.format,
+          priority: p.metadata.priority,
+          author: p.metadata.author,
+        }));
+        return { success: true, data: summary };
+      }
+
+      case "enable_patch": {
+        if (!action.name) {
+          return { success: false, error: "enable_patch requires 'name'" };
+        }
+        const result = await this.patchService.enablePatch(appSlug, action.name);
+        if (result.success) {
+          return { success: true, data: { message: `Patch "${action.name}" enabled` } };
+        }
+        return { success: false, error: result.error };
+      }
+
+      case "disable_patch": {
+        if (!action.name) {
+          return { success: false, error: "disable_patch requires 'name'" };
+        }
+        const result = await this.patchService.disablePatch(appSlug, action.name);
+        if (result.success) {
+          return { success: true, data: { message: `Patch "${action.name}" disabled` } };
+        }
+        return { success: false, error: result.error };
+      }
+
+      default:
+        return { success: false, error: `Unknown patch action: ${action.action}` };
+    }
+  }
 
   async send(
     message: string,
@@ -510,8 +647,8 @@ export class AgentService {
     const provider = this.providers[model.provider];
     this.currentProvider = provider;
 
-    // Build system prompt with interactive elements + a11y context
-    const systemPrompt = await buildSystemPromptWithActions(this.cdpService);
+    // Build system prompt with interactive elements + a11y context + patches
+    const systemPrompt = await buildSystemPromptWithActions(this.cdpService, this.patchService, this.currentAppSlug);
 
     // Tool-block accumulator for parsing ```tool blocks from streaming text
     let fullText = "";
@@ -532,7 +669,7 @@ export class AgentService {
 
             // Execute the action
             try {
-              const result = await this.cdpService.executeAction(action);
+              const result = await this.executeAction(action);
               onEvent({
                 kind: "agent:tool-result",
                 payload: { action, result },
@@ -602,8 +739,8 @@ export class AgentService {
     const provider = this.providers[model.provider];
     this.currentProvider = provider;
 
-    // Build the enriched system prompt with interactive elements + a11y tree
-    let systemPrompt = await buildSystemPromptWithActions(this.cdpService);
+    // Build the enriched system prompt with interactive elements + a11y tree + patches
+    let systemPrompt = await buildSystemPromptWithActions(this.cdpService, this.patchService, this.currentAppSlug);
 
     // Prepend companion-specific context
     systemPrompt = `You are a Companion Agent for ${appName}. ` +
@@ -630,7 +767,7 @@ export class AgentService {
             executedToolBlocks.add(raw);
 
             try {
-              const result = await this.cdpService.executeAction(action);
+              const result = await this.executeAction(action);
               onEvent({
                 kind: "agent:tool-result",
                 payload: { action, result },
@@ -877,10 +1014,15 @@ function formatInteractiveElements(elements: InteractiveElement[]): string {
 
 // ── System prompt builder ──────────────────────────────────────
 
-async function buildSystemPromptWithActions(cdpService: CdpService): Promise<string> {
+async function buildSystemPromptWithActions(
+  cdpService: CdpService,
+  patchService?: PatchService | null,
+  appSlug?: string | null
+): Promise<string> {
   let elementsSection = "\n\n(No interactive elements available -- CDP not connected)";
   let a11ySection = "";
   let pageInfoSection = "";
+  let patchesSection = "";
 
   if (cdpService.isConnected()) {
     try {
@@ -902,6 +1044,57 @@ async function buildSystemPromptWithActions(cdpService: CdpService): Promise<str
     try {
       const info = await cdpService.getPageInfo();
       pageInfoSection = `\n\n## Page Info\n- Title: ${info.title}\n- URL: ${info.url}\n- Framework: ${info.framework || "unknown"}\n- DOM structure: ${info.documentStructure}`;
+    } catch {
+      // Non-critical
+    }
+  }
+
+  // Add patches context if available
+  if (patchService && appSlug) {
+    try {
+      const patchSummary = await patchService.getPatchSummaryForPrompt(appSlug);
+      patchesSection = `\n\n## Patches
+
+You can create persistent modifications to the app using patches.
+Patches are JavaScript/TSX/CSS files that are injected via CDP and persist across app restarts and page navigations.
+
+Current patches for this app:
+${patchSummary}
+
+### Patch Actions
+
+| Action | Parameters | Description |
+|--------|-----------|-------------|
+| create_patch | name, code, description?, format?, priority?, inject_at? | Create a new patch and inject it |
+| update_patch | name, code?, enabled?, priority?, description? | Modify an existing patch |
+| delete_patch | name | Delete a patch |
+| list_patches | (none) | List all patches for this app |
+| enable_patch | name | Enable a disabled patch |
+| disable_patch | name | Disable a patch without deleting it |
+
+### Patch Examples
+
+Create a simple JS patch:
+\`\`\`tool
+{"action": "create_patch", "name": "my-widget", "description": "Adds a floating widget", "format": "js", "code": "(function() { var div = document.createElement('div'); div.textContent = 'Hello from Agentlication!'; div.style.cssText = 'position:fixed;bottom:16px;right:16px;background:#1a1a2e;color:#fff;padding:8px 16px;border-radius:8px;z-index:99999;font-family:system-ui;'; document.body.appendChild(div); window.__AGENTLICATION_PATCHES__['my-widget'].cleanup = function() { div.remove(); }; })()"}
+\`\`\`
+
+Update a patch:
+\`\`\`tool
+{"action": "update_patch", "name": "my-widget", "code": "...new code..."}
+\`\`\`
+
+Toggle a patch:
+\`\`\`tool
+{"action": "enable_patch", "name": "my-widget"}
+\`\`\`
+
+### Patch Best Practices
+- Always register a cleanup function via \`window.__AGENTLICATION_PATCHES__['patch-name'].cleanup = function() { ... }\`
+- Use stable selectors (data-testid, aria-label, role) over class names
+- Wrap your patch code in an IIFE for isolation
+- For CSS-only changes, use format "css"
+- After creating a patch, verify it worked by inspecting the DOM or taking a screenshot`;
     } catch {
       // Non-critical
     }
@@ -972,7 +1165,7 @@ Get fresh element list:
 - If a click fails via selector, try click_text with the button text instead
 - For React/Vue apps, the type action handles framework change detection automatically
 - Be concise and helpful. Explain what you are doing before each action.
-${pageInfoSection}${elementsSection}${a11ySection}`;
+${pageInfoSection}${elementsSection}${a11ySection}${patchesSection}`;
 }
 
 function buildSystemPrompt(domSnapshot: string): string {

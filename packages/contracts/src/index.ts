@@ -212,6 +212,13 @@ export type AgentActionKind =
   | "get_a11y_tree"
   | "navigate"
   | "press_key"
+  // Patch management actions
+  | "create_patch"
+  | "update_patch"
+  | "delete_patch"
+  | "list_patches"
+  | "enable_patch"
+  | "disable_patch"
   // Native AX actions (prefixed with ax_)
   | "ax_click"
   | "ax_type"
@@ -237,6 +244,14 @@ export interface AgentAction {
   label?: string;         // AX element label (for ax_ actions)
   axAction?: string;      // AX action name (e.g. "AXPress", "AXShowMenu")
   appName?: string;       // Target app name (for ax_ actions)
+  // Patch-specific fields (for create_patch / update_patch)
+  name?: string;          // Patch name
+  description?: string;   // Patch description
+  format?: PatchFormat;   // Patch format (js, tsx, css)
+  priority?: number;      // Patch priority (0-100)
+  inject_at?: PatchInjectAt; // When to inject
+  code?: string;          // Patch code body
+  enabled?: boolean;      // For update_patch enable/disable
 }
 
 export interface AgentActionResult {
@@ -340,6 +355,76 @@ export interface AXAgentAction {
   depth?: number;      // Tree depth
 }
 
+// ── Patch types ─────────────────────────────────────────────────
+
+export type PatchFormat = "js" | "tsx" | "css";
+
+export type PatchInjectAt = "document-start" | "document-ready" | "document-idle";
+
+export type PatchStatus = "active" | "disabled" | "error" | "compiling";
+
+export interface PatchMetadata {
+  name: string;
+  description: string;
+  version: string;
+  author: string;
+  targetApp: string;
+  targetVersion?: string;       // semver range
+  format: PatchFormat;
+  priority: number;             // 0-100
+  enabled: boolean;
+  injectAt: PatchInjectAt;
+  runOnce: boolean;
+  dependsOn: string[];
+  cssInject: boolean;
+  created: string;              // ISO date
+  modified: string;             // ISO date
+  tags: string[];
+}
+
+export interface PatchFile {
+  metadata: PatchMetadata;
+  code: string;                 // The patch code (after frontmatter)
+  filePath: string;             // Absolute path on disk
+  compiledCode?: string;        // Compiled JS (for TSX patches)
+  status: PatchStatus;
+  lastError?: string;
+  lastInjectedAt?: number;      // Timestamp
+  cdpIdentifier?: string;       // ID from addScriptToEvaluateOnNewDocument
+}
+
+export interface PatchCreateRequest {
+  appSlug: string;
+  name: string;
+  description: string;
+  format: PatchFormat;
+  code: string;
+  priority?: number;
+  injectAt?: PatchInjectAt;
+  author?: string;
+  tags?: string[];
+}
+
+export interface PatchUpdateRequest {
+  appSlug: string;
+  name: string;
+  code?: string;
+  enabled?: boolean;
+  priority?: number;
+  description?: string;
+}
+
+export interface PatchListResult {
+  patches: PatchFile[];
+  appSlug: string;
+}
+
+export interface PatchOperationResult {
+  success: boolean;
+  patch?: PatchFile;
+  error?: string;
+}
+
 // ── IPC channel names ──────────────────────────────────────────
 
 export const IPC = {
@@ -392,6 +477,19 @@ export const IPC = {
 
   // Companion agent (with HARNESS.md + DOM context)
   COMPANION_AGENT_SEND: "companion:agent-send",
+
+  // Patch management
+  PATCH_LIST: "patch:list",
+  PATCH_CREATE: "patch:create",
+  PATCH_UPDATE: "patch:update",
+  PATCH_DELETE: "patch:delete",
+  PATCH_ENABLE: "patch:enable",
+  PATCH_DISABLE: "patch:disable",
+  PATCH_INJECT: "patch:inject",
+  PATCH_INJECT_ALL: "patch:inject-all",
+  PATCH_GET: "patch:get",
+  PATCH_ERROR: "patch:error",
+  PATCH_STATUS: "patch:status",
 
   // Accessibility (native macOS apps)
   AX_TREE: "ax:tree",

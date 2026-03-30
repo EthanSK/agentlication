@@ -4,10 +4,11 @@ import * as fs from "fs";
 import * as os from "os";
 import { execFileSync, execSync } from "child_process";
 import { IPC } from "@agentlication/contracts";
-import type { AppProfile, TargetApp, CdpPageInfo, StatusMessage, StatusIcon, SourceRepoFindResult, SourceCloneResult, AgentAction, AgentActionResult, AXTree, AXActionResult, AXAppInfo, AXInteractiveElement, AXAgentAction } from "@agentlication/contracts";
+import type { AppProfile, TargetApp, CdpPageInfo, StatusMessage, StatusIcon, SourceRepoFindResult, SourceCloneResult, AgentAction, AgentActionResult, AXTree, AXActionResult, AXAppInfo, AXInteractiveElement, AXAgentAction, PatchCreateRequest, PatchUpdateRequest, PatchFile, PatchListResult, PatchOperationResult } from "@agentlication/contracts";
 import { AgentService } from "./agent-service";
 import { CdpService } from "./cdp-service";
 import { AccessibilityService } from "./accessibility-service";
+import { PatchService } from "./patch-service";
 import { scanElectronApps, launchAppWithDebugging } from "./app-scanner";
 import { findSourceRepo, cloneSourceRepo } from "./source-repo-service";
 
@@ -17,7 +18,11 @@ let companionTargetAppName: string | null = null;
 let focusSubscriptionId: number | null = null;
 const cdpService = new CdpService();
 const accessibilityService = new AccessibilityService();
+const patchService = new PatchService(cdpService);
 const agentService = new AgentService(cdpService, accessibilityService);
+
+// Wire PatchService into AgentService for patch tool-block handling
+agentService.setPatchService(patchService);
 
 const isDev = !app.isPackaged;
 
@@ -283,6 +288,26 @@ ${appData.name} is ${appType} located at ${appData.path}.
         emitStatus(text, level);
       });
 
+      // Auto-inject patches after successful connection
+      if (result.success) {
+        const appSlug = slugify(appName);
+        agentService.setCurrentAppSlug(appSlug);
+
+        try {
+          // Inject React detection script first (for TSX patches)
+          const reactDetection = patchService.getReactDetectionScript();
+          await cdpService.addScriptToEvaluateOnNewDocument(reactDetection);
+          await cdpService.evaluate(reactDetection);
+
+          // Inject all enabled patches
+          await patchService.injectPatches(appSlug, (text, level) => {
+            emitStatus(text, level);
+          });
+        } catch (err) {
+          emitStatus(`Patch injection: ${String(err)}`, "info", "info");
+        }
+      }
+
       return result;
     }
   );
@@ -530,6 +555,9 @@ ${appData.name} is ${appType} located at ${appData.path}.
       const slug = slugify(appName);
       const appDir = path.join(PROFILE_ROOT, slug);
 
+      // Set the current app slug for patch action routing
+      agentService.setCurrentAppSlug(slug);
+
       // Read HARNESS.md if it exists
       let harnessContent = "";
       const harnessPath = path.join(appDir, "HARNESS.md");
@@ -564,6 +592,71 @@ ${appData.name} is ${appType} located at ${appData.path}.
       );
     }
   );
+
+  // ── Patch management handlers ────────────────────────────────────
+
+  ipcMain.handle(IPC.PATCH_LIST, async (_event, appSlug: string): Promise<PatchListResult> => {
+    const patches = await patchService.loadPatches(appSlug);
+    return { patches, appSlug };
+  });
+
+  ipcMain.handle(IPC.PATCH_CREATE, async (_event, req: PatchCreateRequest): Promise<PatchOperationResult> => {
+    return patchService.createPatch(req, (text, level) => {
+      emitStatus(text, level);
+    });
+  });
+
+  ipcMain.handle(IPC.PATCH_UPDATE, async (_event, req: PatchUpdateRequest): Promise<PatchOperationResult> => {
+    return patchService.updatePatch(req, (text, level) => {
+      emitStatus(text, level);
+    });
+  });
+
+  ipcMain.handle(IPC.PATCH_DELETE, async (_event, appSlug: string, name: string): Promise<PatchOperationResult> => {
+    return patchService.deletePatch(appSlug, name, (text, level) => {
+      emitStatus(text, level);
+    });
+  });
+
+  ipcMain.handle(IPC.PATCH_ENABLE, async (_event, appSlug: string, name: string): Promise<PatchOperationResult> => {
+    return patchService.enablePatch(appSlug, name, (text, level) => {
+      emitStatus(text, level);
+    });
+  });
+
+  ipcMain.handle(IPC.PATCH_DISABLE, async (_event, appSlug: string, name: string): Promise<PatchOperationResult> => {
+    return patchService.disablePatch(appSlug, name, (text, level) => {
+      emitStatus(text, level);
+    });
+  });
+
+  ipcMain.handle(IPC.PATCH_GET, async (_event, appSlug: string, name: string): Promise<PatchFile | null> => {
+    return patchService.getPatch(appSlug, name);
+  });
+
+  ipcMain.handle(IPC.PATCH_INJECT, async (_event, appSlug: string, name: string): Promise<PatchOperationResult> => {
+    try {
+      const patch = await patchService.getPatch(appSlug, name);
+      if (!patch) {
+        return { success: false, error: `Patch "${name}" not found` };
+      }
+      await patchService.injectSinglePatch(patch, appSlug);
+      return { success: true, patch };
+    } catch (err) {
+      return { success: false, error: String(err) };
+    }
+  });
+
+  ipcMain.handle(IPC.PATCH_INJECT_ALL, async (_event, appSlug: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      await patchService.injectPatches(appSlug, (text, level) => {
+        emitStatus(text, level);
+      });
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: String(err) };
+    }
+  });
 
   // ── Accessibility (native macOS app) handlers ──────────────────
 

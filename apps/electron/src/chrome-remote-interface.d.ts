@@ -139,6 +139,14 @@ declare module "chrome-remote-interface" {
       captureBeyondViewport?: boolean;
     }): Promise<{ data: string }>;
     getFrameTree(): Promise<{ frameTree: unknown }>;
+    addScriptToEvaluateOnNewDocument(params: {
+      source: string;
+      worldName?: string;
+      includeCommandLineAPI?: boolean;
+    }): Promise<{ identifier: string }>;
+    removeScriptToEvaluateOnNewDocument(params: {
+      identifier: string;
+    }): Promise<void>;
   }
 
   // ── CDPClient ───────────────────────────────────────────────────
