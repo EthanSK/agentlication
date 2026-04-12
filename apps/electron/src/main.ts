@@ -157,8 +157,8 @@ function emitStatus(text: string, level: "info" | "success" | "error" | "progres
 
 function registerIpcHandlers() {
   // App scanning
-  ipcMain.handle(IPC.SCAN_APPS, async () => {
-    return scanElectronApps();
+  ipcMain.handle(IPC.SCAN_APPS, async (_event, options?: { includeHiddenApps?: boolean }) => {
+    return scanElectronApps(options);
   });
 
   // Check if an app has been agentlicated (has a per-app profile)

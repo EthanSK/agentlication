@@ -69,7 +69,8 @@ const IPC = {
 // Expose a safe API to the renderer process
 contextBridge.exposeInMainWorld("agentlication", {
   // App picker
-  scanApps: () => ipcRenderer.invoke(IPC.SCAN_APPS),
+  scanApps: (options?: { includeHiddenApps?: boolean }) =>
+    ipcRenderer.invoke(IPC.SCAN_APPS, options),
   launchApp: (appPath: string) => ipcRenderer.invoke(IPC.LAUNCH_APP, appPath),
   isAppAgentlicated: (appName: string) => ipcRenderer.invoke(IPC.APP_IS_AGENTLICATED, appName),
   createAppProfile: (appData: { name: string; path: string }) =>

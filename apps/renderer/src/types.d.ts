@@ -19,7 +19,7 @@ import type {
 } from "@agentlication/contracts";
 
 interface AgentlicationAPI {
-  scanApps: () => Promise<TargetApp[]>;
+  scanApps: (options?: { includeHiddenApps?: boolean }) => Promise<TargetApp[]>;
   launchApp: (appPath: string) => Promise<{ success: boolean; port: number; error?: string }>;
   isAppAgentlicated: (appName: string) => Promise<boolean>;
   createAppProfile: (appData: { name: string; path: string }) => Promise<{ success: boolean; profile?: AppProfile; error?: string }>;

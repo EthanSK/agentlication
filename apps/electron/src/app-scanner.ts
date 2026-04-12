@@ -25,6 +25,10 @@ const ELECTRON_INDICATORS = [
   "electron.asar",
 ];
 
+export interface ScanAppsOptions {
+  includeHiddenApps?: boolean;
+}
+
 // Ensure temp icon directory exists
 try {
   fs.mkdirSync(ICONS_DIR, { recursive: true });
@@ -34,35 +38,136 @@ try {
 
 /**
  * Extract the app icon as a base64 data URL.
- * Uses Info.plist to find the icon file, then sips to convert .icns to PNG.
+ * Prefers Info.plist-defined icons, then falls back to best candidate in Resources.
  */
 function extractAppIcon(appPath: string, appName: string): string | undefined {
   try {
-    // Read CFBundleIconFile from Info.plist
-    const plistPath = path.join(appPath, "Contents", "Info");
-    const iconFileName = execFileSync(
-      "defaults",
-      ["read", plistPath, "CFBundleIconFile"],
-      { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }
-    ).trim();
+    const iconCandidates = collectIconCandidates(appPath, appName);
+    for (const iconPath of iconCandidates) {
+      const dataUrl = convertIconToDataUrl(iconPath, appName);
+      if (dataUrl) return dataUrl;
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
 
-    if (!iconFileName) return undefined;
+function collectIconCandidates(appPath: string, appName: string): string[] {
+  const resourcesDir = path.join(appPath, "Contents", "Resources");
+  if (!fs.existsSync(resourcesDir)) return [];
 
-    // Add .icns extension if not present
-    const icnsName = iconFileName.endsWith(".icns")
-      ? iconFileName
-      : `${iconFileName}.icns`;
-    const icnsPath = path.join(appPath, "Contents", "Resources", icnsName);
+  const plistPath = path.join(appPath, "Contents", "Info");
+  const candidates: string[] = [];
 
-    if (!fs.existsSync(icnsPath)) return undefined;
+  const bundleIconFile = readPlistKey(plistPath, "CFBundleIconFile");
+  const bundleIconName = readPlistKey(plistPath, "CFBundleIconName");
 
-    // Convert to PNG using sips
+  for (const iconName of [bundleIconFile, bundleIconName]) {
+    if (!iconName) continue;
+    addNamedIconCandidates(candidates, resourcesDir, iconName);
+  }
+
+  // Fallback: look through Resources for likely icon files.
+  try {
+    const appToken = normalizeToken(appName);
+    const fallbackIcons = fs
+      .readdirSync(resourcesDir)
+      .filter((entry) => entry.toLowerCase().endsWith(".icns") || entry.toLowerCase().endsWith(".png"))
+      .filter((entry) => !entry.startsWith("."))
+      .sort((a, b) => scoreIconFilename(b, appToken) - scoreIconFilename(a, appToken));
+
+    for (const entry of fallbackIcons) {
+      candidates.push(path.join(resourcesDir, entry));
+    }
+  } catch {
+    // ignore fallback failures
+  }
+
+  // Keep only existing files and de-dupe in insertion order.
+  const seen = new Set<string>();
+  const existing: string[] = [];
+  for (const candidate of candidates) {
+    if (!candidate || seen.has(candidate)) continue;
+    seen.add(candidate);
+    if (fs.existsSync(candidate)) {
+      existing.push(candidate);
+    }
+  }
+
+  return existing;
+}
+
+function readPlistKey(plistPath: string, key: string): string | undefined {
+  try {
+    const raw = execFileSync("defaults", ["read", plistPath, key], {
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    }).trim();
+
+    if (!raw) return undefined;
+
+    // defaults can return quoted values or multi-line formats; use first signal line.
+    const firstLine = raw
+      .split("\n")
+      .map((line) => line.trim())
+      .find((line) => line && line !== "(" && line !== ")" && line !== "{") || "";
+
+    const cleaned = firstLine.replace(/[",;]/g, "").trim();
+    return cleaned || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function addNamedIconCandidates(candidates: string[], resourcesDir: string, iconName: string) {
+  const trimmed = iconName.trim();
+  if (!trimmed) return;
+
+  const ext = path.extname(trimmed).toLowerCase();
+  const base = ext ? trimmed.slice(0, -ext.length) : trimmed;
+
+  const possibleNames = new Set<string>([
+    trimmed,
+    `${base}.icns`,
+    `${base}.png`,
+    `${base}.Iconset`,
+  ]);
+
+  for (const name of possibleNames) {
+    candidates.push(path.join(resourcesDir, name));
+  }
+}
+
+function scoreIconFilename(fileName: string, appToken: string): number {
+  const lower = fileName.toLowerCase();
+  const normalized = normalizeToken(fileName.replace(/\.(icns|png)$/i, ""));
+
+  let score = 0;
+
+  if (normalized === appToken) score += 50;
+  if (appToken && normalized.includes(appToken)) score += 30;
+  if (lower.includes("icon")) score += 20;
+  if (lower.endsWith(".icns")) score += 10;
+
+  return score;
+}
+
+function convertIconToDataUrl(iconPath: string, appName: string): string | undefined {
+  try {
     const safeName = appName.replace(/[^a-zA-Z0-9_-]/g, "_");
-    const pngPath = path.join(ICONS_DIR, `${safeName}.png`);
+    const sourceName = path.basename(iconPath).replace(/[^a-zA-Z0-9._-]/g, "_");
+    const pngPath = path.join(ICONS_DIR, `${safeName}-${sourceName}.png`);
+
+    if (iconPath.toLowerCase().endsWith(".png")) {
+      // Reuse PNG directly to avoid conversion failures where possible.
+      const pngBuffer = fs.readFileSync(iconPath);
+      return `data:image/png;base64,${pngBuffer.toString("base64")}`;
+    }
 
     execFileSync(
       "sips",
-      ["-s", "format", "png", "-z", "64", "64", icnsPath, "--out", pngPath],
+      ["-s", "format", "png", "-z", "64", "64", iconPath, "--out", pngPath],
       { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }
     );
 
@@ -75,12 +180,29 @@ function extractAppIcon(appPath: string, appName: string): string | undefined {
   }
 }
 
+function normalizeToken(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function shouldIncludeAppBundle(entry: string, includeHiddenApps: boolean): boolean {
+  if (!entry.endsWith(".app")) return false;
+
+  const appName = entry.slice(0, -4);
+  if (!includeHiddenApps && appName.startsWith(".")) {
+    return false;
+  }
+
+  return true;
+}
+
 /**
  * Scan /Applications and common Electron build output directories for ALL apps.
  * Returns both Electron and non-Electron apps, with `isElectron` flag set accordingly.
  * De-duplicates by app name, preferring /Applications/ version when both exist.
  */
-export function scanElectronApps(): TargetApp[] {
+export function scanElectronApps(options: ScanAppsOptions = {}): TargetApp[] {
+  const includeHiddenApps = options.includeHiddenApps ?? false;
+
   /** Map from app name -> TargetApp (used for de-duplication) */
   const appMap = new Map<string, TargetApp>();
 
@@ -89,7 +211,7 @@ export function scanElectronApps(): TargetApp[] {
     const entries = fs.readdirSync(APPLICATIONS_DIR);
 
     for (const entry of entries) {
-      if (!entry.endsWith(".app")) continue;
+      if (!shouldIncludeAppBundle(entry, includeHiddenApps)) continue;
 
       const appPath = path.join(APPLICATIONS_DIR, entry);
       const appName = entry.replace(".app", "");
@@ -126,7 +248,7 @@ export function scanElectronApps(): TargetApp[] {
             if (!fs.existsSync(buildDir)) continue;
             const entries = fs.readdirSync(buildDir);
             for (const entry of entries) {
-              if (!entry.endsWith(".app")) continue;
+              if (!shouldIncludeAppBundle(entry, includeHiddenApps)) continue;
               const appPath = path.join(buildDir, entry);
               const appName = entry.replace(".app", "");
               // Only add if not already found in /Applications (prefer system installs)

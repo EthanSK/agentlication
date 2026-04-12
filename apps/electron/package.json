@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsc && wait-on http://localhost:5173 && electron .",
     "build": "tsc",
+    "test": "npm run build && node --test test/*.test.js",
     "package": "electron-builder --mac"
   },
   "dependencies": {
