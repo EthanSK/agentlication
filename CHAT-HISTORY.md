@@ -364,7 +364,3 @@ Built the full Runtime Patch System following the detailed plan in `docs/RUNTIME
 - **IPC & Preload**: All patch handlers wired in `main.ts`. Preload bridge exposes `patchList`, `patchCreate`, `patchUpdate`, `patchDelete`, `patchEnable`, `patchDisable`, `patchGet`, `patchInject`, `patchInjectAll`, `onPatchError`, `onPatchStatus`.
 
 - **Testing**: 26 unit tests passed (YAML parsing, CRUD, priority ordering, enable/disable, deletion). esbuild TSX compilation verified. Live CDP injection tested against VS Code: badge injection, cleanup, re-injection, and `addScriptToEvaluateOnNewDocument` persistence all confirmed working.
-
-## 2026-04-18 — Monorepo Feature Audit
-
-Audited the monorepo against the project vision feature list and classified each feature as shipped, partial, missing, or broken based on code evidence. Verified the current code still builds with `npm run build` and Electron source-repo tests pass with `npm run -w apps/electron test`. Key findings: CDP connection/actions, BYOS CLI providers, model picker, source repo discovery/clone, HMR dev scripts, AX service code, companion window, and runtime patch injection exist to varying degrees; native fallback routing is currently broken in the renderer because companion mode always sends through the CDP companion path; Codex provider ignores the generated system prompt; fork/marketplace/voting/license/auto-update/speech pipeline features are mostly absent or only documented as ideas.
