@@ -364,3 +364,15 @@ Built the full Runtime Patch System following the detailed plan in `docs/RUNTIME
 - **IPC & Preload**: All patch handlers wired in `main.ts`. Preload bridge exposes `patchList`, `patchCreate`, `patchUpdate`, `patchDelete`, `patchEnable`, `patchDisable`, `patchGet`, `patchInject`, `patchInjectAll`, `onPatchError`, `onPatchStatus`.
 
 - **Testing**: 26 unit tests passed (YAML parsing, CRUD, priority ordering, enable/disable, deletion). esbuild TSX compilation verified. Live CDP injection tested against VS Code: badge injection, cleanup, re-injection, and `addScriptToEvaluateOnNewDocument` persistence all confirmed working.
+
+## 2026-04-18 — MBP Bootstrap & Ideas Capture
+
+Bootstrapped the agentlication project locally on Ethan's MacBook Pro (previously only present on the Mac Mini). Fresh `git clone` at commit `20cbc4b` (matches Mac Mini HEAD; Mac Mini has untracked `AUDIT-2026-04-18.md` and `docs/` that were not on origin). `npm install` completed cleanly (511 packages, 18 vulnerabilities noted but non-blocking). `npm run dev` started via the workspace root script (renderer + electron concurrently).
+
+Captured two new product ideas from Ethan's voice note:
+
+- **App picker UX — click-to-capture next active window**: a button that enters "capture next frontmost window" mode and assigns whichever window becomes active next as the target for the panel being configured. Faster than scrolling installed-apps lists. Implementation via `NSWorkspace.didActivateApplicationNotification` or CGWindow frontmost polling; works for Electron and non-Electron via existing AX path.
+
+- **VST plugin targets**: support VST/VST3/AU plugins hosted inside DAWs as Agentlication targets. Plugin UIs are subwindows of the DAW process, so a per-process window walker + the click-to-capture flow above would naturally target them. Opens a direct integration path to mixassist-ai. Start with Ableton + VST3 as PoC.
+
+Both ideas appended to IDEAS.md under their own H2 sections.

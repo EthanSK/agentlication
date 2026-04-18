@@ -229,6 +229,24 @@
 - Need to handle Accessibility permissions (System Preferences > Privacy > Accessibility)
 - Could auto-prompt the user to grant Accessibility access on first non-Electron agentlication
 
+## App Picker UX — Click-to-Capture Next Active Window
+
+- Add a "Capture next active window" button in the app picker UI (Hub and/or per-panel configuration)
+- Clicking it puts Agentlication into a short-lived "capture-next-active-window" mode
+- The next window that becomes frontmost/active on macOS is assigned as the target app for the agent panel being configured
+- Much faster than scrolling an installed-apps list — especially for obscure or unlisted apps, or when the user already has the target open
+- Implementation sketch: macOS `NSWorkspace.didActivateApplicationNotification` (or CGWindow frontmost polling via accessibility API); capture bundle identifier, PID, and window title; auto-populate the panel's target
+- Include an "Esc to cancel" escape hatch and a 10–15s timeout so capture mode doesn't get stuck
+- Pairs well with the existing accessibility-API path — works for both Electron and non-Electron targets
+
+## VST Plugin Targets — Agent Panels Inside DAWs
+
+- Extend Agentlication target support to VST/VST3/AU plugins hosted inside DAWs (Ableton Live, Logic Pro, FL Studio, Bitwarden-style DAWs)
+- VST plugin UIs run as subwindows inside the DAW's process (Ableton's `Live` process hosts the plugin chrome), so the window picker / click-to-capture flow above would naturally target them if the window list is walked per-process rather than only per-app
+- Opens up a direct integration path with mixassist-ai (Ethan's music-focused agent product) — attach a companion chat to a specific plugin instance (an EQ, a synth, a compressor) and let the agent read knob values, automate parameter sweeps, generate presets
+- Investigation needed: how plugin subwindows expose themselves via CGWindow / accessibility API; whether each plugin instance gets a unique window id or they share one per host; VST3 vs AU vs VST2 differences
+- Could start with a single DAW (Ableton Live) + a single plugin format (VST3) as proof-of-concept, then generalize
+
 ## Open Questions
 
 - Local installer vs cloud build queue?
