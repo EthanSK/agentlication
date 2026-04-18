@@ -1,5 +1,33 @@
 import React, { useEffect, useState, useMemo } from "react";
-import type { TargetApp, CdpPageInfo, AppProfile } from "@agentlication/contracts";
+import type { TargetApp, CdpPageInfo, AppProfile, AppScanUpdate } from "@agentlication/contracts";
+
+/** How many skeleton rows to show while the initial scan is in flight. */
+const SKELETON_ROW_COUNT = 10;
+
+function SkeletonAppCard({ keySeed }: { keySeed: number }) {
+  // Vary widths slightly so the placeholder block doesn't look like a solid bar.
+  const nameWidth = 40 + ((keySeed * 17) % 40); // 40–80%
+  const pathWidth = 55 + ((keySeed * 13) % 35); // 55–90%
+  return (
+    <div className="app-card app-card-skeleton" aria-hidden="true">
+      <div className="app-icon skeleton-shimmer" />
+      <div className="app-info">
+        <div
+          className="skeleton-line skeleton-shimmer"
+          style={{ width: `${nameWidth}%`, height: 14 }}
+        />
+        <div
+          className="skeleton-line skeleton-shimmer"
+          style={{ width: `${pathWidth}%`, height: 11, marginTop: 6 }}
+        />
+      </div>
+      <div
+        className="skeleton-line skeleton-shimmer"
+        style={{ width: 90, height: 30, borderRadius: 6 }}
+      />
+    </div>
+  );
+}
 
 interface Props {
   onAppSelected: (app: TargetApp) => void;
@@ -42,15 +70,54 @@ export default function AppPicker({
   const [showAllApps, setShowAllApps] = useState(true);
 
   useEffect(() => {
+    // Subscribe to streaming icon updates BEFORE kicking off the scan so we
+    // never miss an early update that lands between invoke-resolve and
+    // listener-attach.
+    let unsubscribe: (() => void) | undefined;
+    if (window.agentlication?.onAppScanUpdate) {
+      unsubscribe = window.agentlication.onAppScanUpdate((update: AppScanUpdate) => {
+        if (update.done) {
+          // eslint-disable-next-line no-console
+          console.timeEnd?.("[hub] icon-stream");
+          return;
+        }
+        if (!update.path) return;
+        setApps((prev) =>
+          prev.map((app) =>
+            app.path === update.path
+              ? {
+                  ...app,
+                  icon: update.icon ?? app.icon,
+                  isElectron: update.isElectron ?? app.isElectron,
+                }
+              : app
+          )
+        );
+      });
+    }
     loadApps();
+    return () => {
+      unsubscribe?.();
+    };
   }, []);
 
   const loadApps = async () => {
     setLoading(true);
+    // eslint-disable-next-line no-console
+    console.time("[hub] initial-scan");
+    // eslint-disable-next-line no-console
+    console.time("[hub] icon-stream");
     try {
       let scanned: TargetApp[];
       if (window.agentlication) {
-        scanned = await window.agentlication.scanApps();
+        // Prefer the streaming scan (returns bare list fast, enriches icons
+        // via IPC events). Fall back to the legacy one-shot scan if the
+        // renderer is loaded against an older preload.
+        if (window.agentlication.scanAppsStream) {
+          scanned = await window.agentlication.scanAppsStream();
+        } else {
+          scanned = await window.agentlication.scanApps();
+        }
       } else {
         // Dev mode without Electron -- show mock data
         scanned = [
@@ -65,8 +132,15 @@ export default function AppPicker({
           { name: "Notes", path: "/Applications/Notes.app", isElectron: false },
         ];
       }
+      // eslint-disable-next-line no-console
+      console.timeEnd("[hub] initial-scan");
+      // eslint-disable-next-line no-console
+      console.log(`[hub] initial scan returned ${scanned.length} apps`);
       setApps(scanned);
       onAppsLoaded?.(scanned);
+      // Release the skeleton as soon as we have the bare list — icons stream
+      // in progressively via onAppScanUpdate.
+      setLoading(false);
 
       // Check which apps are already agentlicated
       if (window.agentlication) {
@@ -81,7 +155,6 @@ export default function AppPicker({
       }
     } catch (err) {
       setError(String(err));
-    } finally {
       setLoading(false);
     }
   };
@@ -369,7 +442,17 @@ export default function AppPicker({
       {/* App list */}
       <div className="app-list">
         {loading ? (
-          <div className="loading">Scanning for apps...</div>
+          <>
+            <div className="app-section-header">
+              <span className="app-section-label">Scanning apps…</span>
+              <span className="skeleton-dot skeleton-dot-1" />
+              <span className="skeleton-dot skeleton-dot-2" />
+              <span className="skeleton-dot skeleton-dot-3" />
+            </div>
+            {Array.from({ length: SKELETON_ROW_COUNT }).map((_, i) => (
+              <SkeletonAppCard key={`skeleton-${i}`} keySeed={i} />
+            ))}
+          </>
         ) : electronApps.length === 0 && otherApps.length === 0 ? (
           <div className="empty">
             {searchQuery

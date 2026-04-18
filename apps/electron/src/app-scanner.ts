@@ -1,11 +1,29 @@
+import * as crypto from "crypto";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { spawn, execFileSync } from "child_process";
-import type { TargetApp } from "@agentlication/contracts";
+import type { TargetApp, AppScanUpdate } from "@agentlication/contracts";
 
 const APPLICATIONS_DIR = "/Applications";
 const ICONS_DIR = "/tmp/agentlication-icons";
+
+/**
+ * Persistent on-disk icon cache.
+ *
+ * First-open lag root cause: on every hub load we were re-running
+ * `defaults read` + `sips -z 64 ... --out ...` for every .app bundle found in
+ * `/Applications` (200+ on a typical dev machine). Each sub-process is
+ * 50–300ms, so the renderer saw 5–15s of "Scanning for apps..." blank. The
+ * scan is also fully synchronous, so it blocked the Electron main process the
+ * entire time.
+ *
+ * Fix: cache PNG bytes at `~/.agentlication/icon-cache/` keyed by
+ * `hash(appPath) + mtime(appBundle)`. A cache hit is ~1ms (one readFile); a
+ * miss still runs sips once and writes the result so subsequent launches are
+ * instant.
+ */
+const ICON_CACHE_DIR = path.join(os.homedir(), ".agentlication", "icon-cache");
 
 /**
  * Subdirectory paths (relative to each project) where Electron build output
@@ -29,11 +47,63 @@ export interface ScanAppsOptions {
   includeHiddenApps?: boolean;
 }
 
-// Ensure temp icon directory exists
+export interface StreamingScanOptions extends ScanAppsOptions {
+  /**
+   * Callback invoked for each per-app update (icon, Electron flag) after the
+   * initial bare list is returned. `done: true` is emitted once exactly when
+   * all apps have been enriched.
+   */
+  onUpdate: (update: AppScanUpdate) => void;
+}
+
+// Ensure temp + cache dirs exist
 try {
   fs.mkdirSync(ICONS_DIR, { recursive: true });
 } catch {
   // ignore
+}
+try {
+  fs.mkdirSync(ICON_CACHE_DIR, { recursive: true });
+} catch {
+  // ignore
+}
+
+/** Compute a stable cache key for an app bundle (path + mtime). */
+function iconCacheKey(appPath: string): string | null {
+  try {
+    const stat = fs.statSync(appPath);
+    const hash = crypto
+      .createHash("sha1")
+      .update(`${appPath}:${stat.mtimeMs}`)
+      .digest("hex");
+    return hash;
+  } catch {
+    return null;
+  }
+}
+
+function readIconFromCache(appPath: string): string | undefined {
+  const key = iconCacheKey(appPath);
+  if (!key) return undefined;
+  const cachePath = path.join(ICON_CACHE_DIR, `${key}.png`);
+  try {
+    if (!fs.existsSync(cachePath)) return undefined;
+    const pngBuffer = fs.readFileSync(cachePath);
+    return `data:image/png;base64,${pngBuffer.toString("base64")}`;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeIconToCache(appPath: string, pngBuffer: Buffer): void {
+  const key = iconCacheKey(appPath);
+  if (!key) return;
+  const cachePath = path.join(ICON_CACHE_DIR, `${key}.png`);
+  try {
+    fs.writeFileSync(cachePath, pngBuffer);
+  } catch {
+    // cache writes are best-effort
+  }
 }
 
 /**
@@ -42,9 +112,13 @@ try {
  */
 function extractAppIcon(appPath: string, appName: string): string | undefined {
   try {
+    // Fast path: disk cache hit avoids spawning `defaults` + `sips`.
+    const cached = readIconFromCache(appPath);
+    if (cached) return cached;
+
     const iconCandidates = collectIconCandidates(appPath, appName);
     for (const iconPath of iconCandidates) {
-      const dataUrl = convertIconToDataUrl(iconPath, appName);
+      const dataUrl = convertIconToDataUrl(iconPath, appName, appPath);
       if (dataUrl) return dataUrl;
     }
     return undefined;
@@ -153,7 +227,11 @@ function scoreIconFilename(fileName: string, appToken: string): number {
   return score;
 }
 
-function convertIconToDataUrl(iconPath: string, appName: string): string | undefined {
+function convertIconToDataUrl(
+  iconPath: string,
+  appName: string,
+  appPath: string
+): string | undefined {
   try {
     const safeName = appName.replace(/[^a-zA-Z0-9_-]/g, "_");
     const sourceName = path.basename(iconPath).replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -162,6 +240,7 @@ function convertIconToDataUrl(iconPath: string, appName: string): string | undef
     if (iconPath.toLowerCase().endsWith(".png")) {
       // Reuse PNG directly to avoid conversion failures where possible.
       const pngBuffer = fs.readFileSync(iconPath);
+      writeIconToCache(appPath, pngBuffer);
       return `data:image/png;base64,${pngBuffer.toString("base64")}`;
     }
 
@@ -174,6 +253,7 @@ function convertIconToDataUrl(iconPath: string, appName: string): string | undef
     if (!fs.existsSync(pngPath)) return undefined;
 
     const pngBuffer = fs.readFileSync(pngPath);
+    writeIconToCache(appPath, pngBuffer);
     return `data:image/png;base64,${pngBuffer.toString("base64")}`;
   } catch {
     return undefined;
@@ -196,74 +276,58 @@ function shouldIncludeAppBundle(entry: string, includeHiddenApps: boolean): bool
 }
 
 /**
- * Scan /Applications and common Electron build output directories for ALL apps.
- * Returns both Electron and non-Electron apps, with `isElectron` flag set accordingly.
- * De-duplicates by app name, preferring /Applications/ version when both exist.
+ * Describes a discovered bundle before the expensive per-app metadata work
+ * (Electron detection, icon extraction) runs.
  */
-export function scanElectronApps(options: ScanAppsOptions = {}): TargetApp[] {
-  const includeHiddenApps = options.includeHiddenApps ?? false;
+interface BundleRef {
+  name: string;
+  path: string;
+  /** True if this bundle was discovered under a dev build dir (Electron-only source). */
+  isDevBuild: boolean;
+}
 
-  /** Map from app name -> TargetApp (used for de-duplication) */
-  const appMap = new Map<string, TargetApp>();
+/** Fast phase: list `.app` bundles without any sips/defaults/Frameworks probing. */
+function discoverBundles(includeHiddenApps: boolean): BundleRef[] {
+  const seen = new Map<string, BundleRef>(); // key = app name (for de-dupe)
 
-  // 1. Scan /Applications — include ALL .app bundles
+  // 1) /Applications — readdir only, no stat calls
   try {
-    const entries = fs.readdirSync(APPLICATIONS_DIR);
-
-    for (const entry of entries) {
+    for (const entry of fs.readdirSync(APPLICATIONS_DIR)) {
       if (!shouldIncludeAppBundle(entry, includeHiddenApps)) continue;
-
-      const appPath = path.join(APPLICATIONS_DIR, entry);
-      const appName = entry.replace(".app", "");
-      const isElectron = checkIfElectron(appPath);
-      const icon = extractAppIcon(appPath, appName);
-
-      appMap.set(appName, {
-        name: appName,
-        path: appPath,
-        icon,
-        isElectron,
+      const name = entry.slice(0, -4);
+      if (seen.has(name)) continue;
+      seen.set(name, {
+        name,
+        path: path.join(APPLICATIONS_DIR, entry),
+        isDevBuild: false,
       });
     }
   } catch (err) {
     console.error("Failed to scan /Applications:", err);
   }
 
-  // 2. Scan dev build output directories under ~/Projects (Electron apps only)
+  // 2) Dev build outputs under ~/Projects
   try {
     const projectsDir = path.join(os.homedir(), "Projects");
     if (fs.existsSync(projectsDir)) {
-      const projects = fs.readdirSync(projectsDir);
-      for (const project of projects) {
+      for (const project of fs.readdirSync(projectsDir)) {
         const projectPath = path.join(projectsDir, project);
-        try {
-          if (!fs.statSync(projectPath).isDirectory()) continue;
-        } catch {
-          continue;
-        }
-
         for (const subdir of DEV_BUILD_SUBDIRS) {
           const buildDir = path.join(projectPath, subdir);
           try {
             if (!fs.existsSync(buildDir)) continue;
-            const entries = fs.readdirSync(buildDir);
-            for (const entry of entries) {
+            for (const entry of fs.readdirSync(buildDir)) {
               if (!shouldIncludeAppBundle(entry, includeHiddenApps)) continue;
-              const appPath = path.join(buildDir, entry);
-              const appName = entry.replace(".app", "");
-              // Only add if not already found in /Applications (prefer system installs)
-              if (!appMap.has(appName) && checkIfElectron(appPath)) {
-                const icon = extractAppIcon(appPath, appName);
-                appMap.set(appName, {
-                  name: appName,
-                  path: appPath,
-                  icon,
-                  isElectron: true,
-                });
-              }
+              const name = entry.slice(0, -4);
+              if (seen.has(name)) continue; // prefer /Applications version
+              seen.set(name, {
+                name,
+                path: path.join(buildDir, entry),
+                isDevBuild: true,
+              });
             }
           } catch {
-            // Skip inaccessible directories
+            // skip inaccessible dirs
           }
         }
       }
@@ -272,11 +336,106 @@ export function scanElectronApps(options: ScanAppsOptions = {}): TargetApp[] {
     console.error("Failed to scan dev build directories:", err);
   }
 
-  // Sort: Electron apps first, then alphabetical within each group
-  return Array.from(appMap.values()).sort((a, b) => {
+  return Array.from(seen.values());
+}
+
+/** Sort: Electron apps first, then alphabetical within each group. */
+function sortApps(apps: TargetApp[]): TargetApp[] {
+  return apps.sort((a, b) => {
     if (a.isElectron !== b.isElectron) return a.isElectron ? -1 : 1;
     return a.name.localeCompare(b.name);
   });
+}
+
+/**
+ * Fast initial scan: returns every `.app` bundle with only the cheap fields
+ * (name, path, isElectron) populated. Icons come later via the streaming
+ * scan. This lets the renderer paint a usable hub in <100ms even on a cold
+ * icon cache.
+ *
+ * `isElectron` detection is kept here because it only requires one
+ * `readdirSync` on `Contents/Frameworks/` (very fast, no child processes) and
+ * the renderer sorts/filters by it.
+ */
+export function scanElectronApps(options: ScanAppsOptions = {}): TargetApp[] {
+  const includeHiddenApps = options.includeHiddenApps ?? false;
+  console.time("[scan] bare-list");
+  const bundles = discoverBundles(includeHiddenApps);
+  console.timeEnd("[scan] bare-list");
+
+  console.time("[scan] electron-check");
+  const apps: TargetApp[] = [];
+  for (const bundle of bundles) {
+    const isElectron = bundle.isDevBuild ? true : checkIfElectron(bundle.path);
+    // In dev-build discovery we only keep Electron apps (matches previous behaviour).
+    if (bundle.isDevBuild && !isElectron) continue;
+
+    apps.push({
+      name: bundle.name,
+      path: bundle.path,
+      // Opportunistically populate from disk cache — zero-cost if it's a miss.
+      icon: readIconFromCache(bundle.path),
+      isElectron,
+    });
+  }
+  console.timeEnd("[scan] electron-check");
+
+  return sortApps(apps);
+}
+
+/**
+ * Streaming scan: returns the bare app list synchronously, then fires
+ * `onUpdate` for every app that needs icon extraction (or Electron
+ * re-detection) as the work completes.
+ *
+ * The initial list is returned immediately; icon enrichment runs on the Node
+ * event loop in small async batches so it doesn't freeze the main process.
+ * Apps whose icons are already in the disk cache ship with the first
+ * response — no update event needed.
+ */
+export function scanElectronAppsStreaming(options: StreamingScanOptions): TargetApp[] {
+  const { onUpdate, ...scanOptions } = options;
+  const apps = scanElectronApps(scanOptions);
+
+  // Figure out which apps still need icon work (cache miss).
+  const pending = apps.filter((app) => !app.icon);
+  if (pending.length === 0) {
+    // Everything came from cache — still signal done so the renderer can
+    // clear any skeleton pulse timers.
+    queueMicrotask(() => onUpdate({ path: "", done: true }));
+    return apps;
+  }
+
+  console.log(`[scan] ${apps.length} apps total, ${pending.length} need icon extraction`);
+
+  // Process icons in small batches with setImmediate gaps so the main process
+  // stays responsive (IPC replies, UI events) during the enrichment phase.
+  const BATCH_SIZE = 6;
+  let index = 0;
+  const scanStart = Date.now();
+
+  function processBatch() {
+    const batch = pending.slice(index, index + BATCH_SIZE);
+    index += BATCH_SIZE;
+
+    for (const app of batch) {
+      const icon = extractAppIcon(app.path, app.name);
+      if (icon) {
+        onUpdate({ path: app.path, icon });
+      }
+    }
+
+    if (index < pending.length) {
+      setImmediate(processBatch);
+    } else {
+      const elapsed = Date.now() - scanStart;
+      console.log(`[scan] icon enrichment done in ${elapsed}ms (${pending.length} apps)`);
+      onUpdate({ path: "", done: true });
+    }
+  }
+
+  setImmediate(processBatch);
+  return apps;
 }
 
 function checkIfElectron(appPath: string): boolean {

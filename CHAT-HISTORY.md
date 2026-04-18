@@ -400,3 +400,40 @@ Ran a comprehensive manual walkthrough of the Agentlication UI on the MacBook Pr
 **Mac Mini bootstrap (via agent-bridge):** asked the Mini Claude agent to pull, install, and launch its own copy. Mini replied within ~5 min: fast-forwarded `20cbc4b..8ab2577`, `npm install` "up to date in 300ms", dev server started (PID 26610, Vite on :5173, both CLIs detected), Electron hub screencapture verified. Mini hub shows **6 Electron apps** (vs 34 on MBP — different installed software), with Producer Player and VS Code pre-agentlicated (badge + Reconnect button). No regressions reported from Mini side.
 
 **Files screenshots:** `/tmp/agentlication-step-{1..6}.png` on MBP, `/tmp/agentlication-mini-hub.png` on Mini.
+
+## 2026-04-18 — Hub First-Paint Lag Fix (Streaming Scan + Icon Cache + Skeleton)
+
+Fixed the "Scanning for apps..." freeze flagged in the 2026-04-18 manual verification pass.
+
+**Root cause:** `scanElectronApps()` ran fully synchronously in the Electron main process. For each of the ~131 bundles in `/Applications`, it invoked `execFileSync("defaults", ...)` twice (plist parse) and `execFileSync("sips", ...)` once (icon conversion) — each a 50-300ms child-process spawn. Total cold-cache blocking work: 5-15 seconds, during which the renderer only saw a plain `"Scanning for apps..."` label and the IPC reply never arrived.
+
+**Fix — three layers:**
+
+1. **Disk icon cache** (`~/.agentlication/icon-cache/<sha1(path+mtime)>.png`). Cache hits skip `defaults` + `sips` entirely. After first launch, subsequent opens render icons in ~1ms each.
+2. **Streaming scan** (`scanElectronAppsStreaming` in `app-scanner.ts`). Returns the bare app list (name/path/isElectron — no icons) synchronously in <100ms, then enriches icons in batches of 6 with `setImmediate` gaps. Updates stream to the renderer via new `SCAN_APPS_UPDATE` IPC event. New IPC channel `SCAN_APPS_STREAM` + renderer API `scanAppsStream` / `onAppScanUpdate`.
+3. **Skeleton loader** (`AppPicker.tsx`, `styles.css`). 10 shimmer placeholder rows + typing-dot "Scanning apps…" header. New `skeleton-shimmer` keyframe + `skeleton-bounce` keyframe. Respects `prefers-reduced-motion`.
+
+Also added `console.time` / `console.log` instrumentation in the main process so future regressions are visible in the dev server terminal.
+
+**Results (131 apps on MBP, cold icon cache):**
+- Bare list ready: **~18ms** (was blocking 5-15s)
+- Electron detection: **~58ms**
+- First paint of usable cards: **~80ms total** (target was <200ms)
+- Background icon enrichment: **~8.8s** — runs progressively, user can click Agentlicate immediately
+- Warm cache: icons load from disk in ~1ms, no `sips` calls
+
+**Files touched:**
+- `packages/contracts/src/index.ts` — new `AppScanUpdate` interface + `SCAN_APPS_STREAM` / `SCAN_APPS_UPDATE` IPC channels
+- `apps/electron/src/app-scanner.ts` — disk cache helpers, `discoverBundles` fast phase, new `scanElectronAppsStreaming` export
+- `apps/electron/src/main.ts` — new `SCAN_APPS_STREAM` handler that pipes `onUpdate` callbacks through `webContents.send`
+- `apps/electron/src/preload.ts` — exposes `scanAppsStream` + `onAppScanUpdate` on `window.agentlication`
+- `apps/renderer/src/types.d.ts` — typings for the new preload methods
+- `apps/renderer/src/AppPicker.tsx` — subscribes to `onAppScanUpdate` before invoking scan, replaces "Scanning for apps..." fallback with `<SkeletonAppCard>` rows
+- `apps/renderer/src/styles.css` — `skeleton-shimmer` + `skeleton-bounce` keyframes, `.app-card-skeleton`, `.skeleton-dot` styles
+
+**Screenshots:**
+- `/tmp/agentlication-baseline.png` (pre-fix loaded state)
+- `/tmp/agentlication-loading-state.png` (skeleton phase, cold cache)
+- `/tmp/agentlication-loaded.png` (loaded state post-fix)
+
+22/22 existing tests still pass (`npm test` in `apps/electron`).

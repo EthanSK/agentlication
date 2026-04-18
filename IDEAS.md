@@ -272,3 +272,46 @@
 - Dev server shipping — is it possible to ship an Electron app that runs `npm run dev`?
 - For non-Electron apps: should the agent use screenshots + vision model, accessibility tree, or both?
 - Should non-Electron apps get a different companion UI that shows the accessibility tree instead of DOM viewer?
+
+## Hub Load Performance (2026-04-18)
+
+- **Icon cache on disk**: `~/.agentlication/icon-cache/` keyed by `sha1(appPath + mtime)`. Cache hits avoid the `defaults read` + `sips` pipeline entirely (~1ms vs 100-300ms per app).
+- **Streaming scan**: `scanElectronAppsStreaming` returns the bare app list in <100ms, then enriches icons in batches of 6 via `setImmediate` gaps so the main process stays responsive to other IPCs.
+- **Skeleton loader**: 10 shimmer placeholder rows with typing-dot header ("Scanning apps…"). Matches existing dark theme, respects `prefers-reduced-motion`.
+- **Future**: could move icon extraction to a worker thread or `utilityProcess.fork` to use parallel sips calls; currently serialized. Would cut the ~9s cold-cache enrichment to ~2s.
+- **Future**: `sips` is invoked per app — could batch-convert multiple .icns files in one sips invocation, or cache at install time by watching `/Applications/` with `fs.watch`.
+
+## Bug-bash 2026-04-18 — parked findings
+
+Lower-priority bugs found during the bug-bash that weren't fixed in commit `ed5c08a` (repo-URL arg-injection + zombie CLI reap). Ordered by rough severity.
+
+### Codex-flagged regression in another subagent's unstaged work
+- `apps/electron/src/app-scanner.ts:369-371` — the bare-list `scanElectronApps` rewrite forces `isElectron: true` for any `.app` found under a `~/Projects/*/{dist,out}` build dir, bypassing the `checkIfElectron` probe. Non-Electron dev-build apps will then render in the Electron section and route to the CDP path instead of the native AX path. Owner: lag-fix subagent (file is unstaged, not ours to commit). Flag to them before they push.
+
+### Agent pipeline / provider-spawn path
+- `agent-service.ts:226-238` (Claude) and `:450-462` (Codex) — the stderr handler flags ANY line containing the substring "error" / "unauthorized" / "expired" as an `agent:error` event. CLIs commonly log neutral phrases like "No errors found" or version strings containing "unauthorized key" — false positives surface as red error bubbles in the UI. Fix: match anchored patterns or only emit `agent:error` on non-zero exit.
+- `agent-service.ts:154-224` — the Claude stream-json parser has buffered assistant/result/delta pathways guarded by a `hasEmittedContent` flag. If the CLI emits a `result` event with `result: ""` (empty string, not undefined), the flush still races. Low-risk but worth a test case for empty completions.
+- `agent-service.ts:1014-1031` — `parseToolBlocks` dedups by the raw regex match string. If the model deliberately emits the same JSON blob twice (e.g. two identical `{"action":"get_elements"}` calls), the second is silently dropped. Probably desirable; worth documenting.
+- No timeout on `spawn(resolvedPath, [...])` for claude/codex. A hung CLI holds the UI in `streaming` state indefinitely — ChatPanel has `onCancel` but no watchdog.
+
+### IPC / main-process
+- `main.ts:807-842` `getTargetAppBounds` interpolates `appName` into a Swift string literal via `.replace(/"/g, '\\"')`. Missing: backslash escaping. An app name containing `\"` or trailing `\` breaks the Swift heredoc and could in principle escape the string literal. `appName` ultimately flows from a trusted source (local .app bundle name on disk) so this is mostly theoretical, but hardening it is cheap.
+- `main.ts:106-115` `isAppRunning` uses `pgrep -f <appName>` with no regex escaping. App names with regex metacharacters (`.`, `*`, `+`, `(`) could mis-match or error. Low impact.
+- Every patch-management IPC handler (`PATCH_CREATE`, `PATCH_UPDATE`, `PATCH_DELETE`, etc.) calls `patchService.*` with a renderer-supplied `appSlug` and `name` but doesn't validate either. `patchService.createPatch` does its own slug normalization, but defense-in-depth validation at the IPC boundary (reject `..`, slashes, empty strings) would protect against future refactors.
+
+### Renderer
+- `ChatPanel.tsx:77-174` — both the hub's ChatPanel and the companion's ChatPanel subscribe to `onAgentEvent`. Main process broadcasts agent events to BOTH windows via `mainWindow?.webContents.send(...)` and `companionWindow?.webContents.send(...)`. Events fired for a Hub Setup Agent send leak into an open Companion window's feed and vice versa. Fix: tag events with a target window id, or split into separate IPC channels (`AGENT_EVENT_HUB` vs `AGENT_EVENT_COMPANION`).
+- `ChatPanel.tsx:77-158` — the `onAgentEvent` effect has `[]` deps but closes over `setStreaming` / `setFeed`. React guarantees these setters are stable, so it works; still, if `onAgentEvent` ever captures state (future refactor risk), the empty deps would hide the bug.
+- `AppPicker.tsx` + its consumers — untested. Auth/setup-flow errors could silently leave UI in the wrong state.
+
+### Test coverage gaps
+- No tests at all for `patchService` (patch create/update/delete, frontmatter round-trip, CSS injection wrapper).
+- No tests for `cdpService` (screenshot/eval error paths, connect retries).
+- No tests for `accessibility-service` (AX bridge error surfaces).
+- No IPC integration tests — the preload → main → service chain is only exercised manually.
+
+### Chat UI streaming-state races
+- If `agent:done` arrives AFTER the user has already started a second send, the empty-streamingText guard prevents double-appends, but any pending `setStreamingText` update from the first turn can leak into the second. Manifests as an "assistant: [empty bubble]". Hard to repro, plausible under high latency.
+
+### Recommended cadence
+- Next bug-bash: 2 weeks. Focus: integration tests for IPC boundary + patchService unit tests (biggest coverage gap), then fix the dual-window agent-event leak (clearest user-visible bug left).

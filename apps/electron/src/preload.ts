@@ -5,6 +5,8 @@ import { contextBridge, ipcRenderer } from "electron";
 // Keep these in sync with packages/contracts/src/index.ts → IPC.
 const IPC = {
   SCAN_APPS: "app:scan",
+  SCAN_APPS_STREAM: "app:scan-stream",
+  SCAN_APPS_UPDATE: "app:scan-update",
   LAUNCH_APP: "app:launch",
   APP_IS_AGENTLICATED: "app:is-agentlicated",
   APP_CREATE_PROFILE: "app:create-profile",
@@ -71,6 +73,14 @@ contextBridge.exposeInMainWorld("agentlication", {
   // App picker
   scanApps: (options?: { includeHiddenApps?: boolean }) =>
     ipcRenderer.invoke(IPC.SCAN_APPS, options),
+  /** Streaming scan: resolves to the bare list immediately; listen via `onAppScanUpdate`. */
+  scanAppsStream: (options?: { includeHiddenApps?: boolean }) =>
+    ipcRenderer.invoke(IPC.SCAN_APPS_STREAM, options),
+  onAppScanUpdate: (callback: (update: unknown) => void) => {
+    const handler = (_event: unknown, data: unknown) => callback(data);
+    ipcRenderer.on(IPC.SCAN_APPS_UPDATE, handler);
+    return () => ipcRenderer.removeListener(IPC.SCAN_APPS_UPDATE, handler);
+  },
   launchApp: (appPath: string) => ipcRenderer.invoke(IPC.LAUNCH_APP, appPath),
   isAppAgentlicated: (appName: string) => ipcRenderer.invoke(IPC.APP_IS_AGENTLICATED, appName),
   createAppProfile: (appData: { name: string; path: string; isElectron?: boolean }) =>

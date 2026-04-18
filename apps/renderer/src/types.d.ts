@@ -4,6 +4,7 @@ import type {
   CdpPageInfo,
   AgentEvent,
   AppProfile,
+  AppScanUpdate,
   ProviderStatusMap,
   StatusMessage,
   SourceRepoFindResult,
@@ -20,6 +21,8 @@ import type {
 
 interface AgentlicationAPI {
   scanApps: (options?: { includeHiddenApps?: boolean }) => Promise<TargetApp[]>;
+  scanAppsStream: (options?: { includeHiddenApps?: boolean }) => Promise<TargetApp[]>;
+  onAppScanUpdate: (callback: (update: AppScanUpdate) => void) => () => void;
   launchApp: (appPath: string) => Promise<{ success: boolean; port: number; error?: string }>;
   isAppAgentlicated: (appName: string) => Promise<boolean>;
   createAppProfile: (appData: { name: string; path: string; isElectron?: boolean }) => Promise<{ success: boolean; profile?: AppProfile; error?: string }>;

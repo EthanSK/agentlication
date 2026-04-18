@@ -159,6 +159,21 @@ export interface TargetApp {
   isElectron: boolean;
 }
 
+/**
+ * Incremental update emitted during a streaming app scan.
+ * The renderer gets the bare app list immediately (fast `readdirSync`), then
+ * receives per-app `icon` + `isElectron` refinements as the main process
+ * resolves them in the background — avoiding a 5–15s blocking scan on first
+ * paint of the hub.
+ */
+export interface AppScanUpdate {
+  path: string; // canonical path (used as key to locate the app)
+  icon?: string;
+  isElectron?: boolean;
+  /** True when this is the final update in the stream. */
+  done?: boolean;
+}
+
 export interface CdpTarget {
   id: string;
   title: string;
@@ -454,6 +469,10 @@ export interface PatchOperationResult {
 export const IPC = {
   // App picker
   SCAN_APPS: "app:scan",
+  /** Renderer → main: start streaming scan. Results arrive via SCAN_APPS_UPDATE. */
+  SCAN_APPS_STREAM: "app:scan-stream",
+  /** Main → renderer: per-app enrichment (icon, Electron flag) during a streaming scan. */
+  SCAN_APPS_UPDATE: "app:scan-update",
   LAUNCH_APP: "app:launch",
   APP_IS_AGENTLICATED: "app:is-agentlicated",
   APP_CREATE_PROFILE: "app:create-profile",

@@ -9,7 +9,7 @@ import { AgentService } from "./agent-service";
 import { CdpService } from "./cdp-service";
 import { AccessibilityService } from "./accessibility-service";
 import { PatchService } from "./patch-service";
-import { scanElectronApps, launchAppWithDebugging } from "./app-scanner";
+import { scanElectronApps, scanElectronAppsStreaming, launchAppWithDebugging } from "./app-scanner";
 import { findSourceRepo, cloneSourceRepo } from "./source-repo-service";
 
 let mainWindow: BrowserWindow | null = null;
@@ -159,6 +159,23 @@ function registerIpcHandlers() {
   // App scanning
   ipcMain.handle(IPC.SCAN_APPS, async (_event, options?: { includeHiddenApps?: boolean }) => {
     return scanElectronApps(options);
+  });
+
+  // Streaming app scan — returns the bare list immediately, then pushes
+  // per-app icon/Electron enrichment via SCAN_APPS_UPDATE. Unblocks the hub's
+  // first paint: the old single-shot SCAN_APPS handler ran 200+ sips/defaults
+  // sub-processes synchronously on cold cache, causing 5–15s of blank UI.
+  ipcMain.handle(IPC.SCAN_APPS_STREAM, async (event, options?: { includeHiddenApps?: boolean }) => {
+    const sender = event.sender;
+    const apps = scanElectronAppsStreaming({
+      ...(options ?? {}),
+      onUpdate: (update) => {
+        // Bail if the renderer was closed mid-scan (e.g. window closed).
+        if (sender.isDestroyed()) return;
+        sender.send(IPC.SCAN_APPS_UPDATE, update);
+      },
+    });
+    return apps;
   });
 
   // Check if an app has been agentlicated (has a per-app profile)
