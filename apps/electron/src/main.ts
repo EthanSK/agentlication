@@ -180,10 +180,31 @@ function registerIpcHandlers() {
         const slug = slugify(appData.name);
         const profileDir = path.join(PROFILE_ROOT, slug);
 
-        // If profile already exists, return it
+        // If profile already exists, return it — but migrate stale
+        // `isElectron` values written by the pre-fix default (see Bug 1 in
+        // AUDIT-2026-04-18.md: early profiles were saved with the
+        // main-process fallback of `true`, which poisoned the renderer's
+        // profile-based routing for native apps). When the caller supplies
+        // an authoritative `isElectron` flag and the stored value disagrees,
+        // rewrite the profile in place so the companion path routes
+        // correctly without requiring users to re-agentlicate.
         const profileFile = path.join(profileDir, "profile.json");
         if (fs.existsSync(profileFile)) {
           const existing = JSON.parse(fs.readFileSync(profileFile, "utf-8")) as AppProfile;
+          if (
+            typeof appData.isElectron === "boolean" &&
+            existing.isElectron !== appData.isElectron
+          ) {
+            existing.isElectron = appData.isElectron;
+            // Non-Electron apps don't use a CDP port — zero it out to match
+            // the new-profile invariant (cdpPort === 0 iff !isElectron).
+            if (!appData.isElectron) {
+              existing.cdpPort = 0;
+            } else if (!existing.cdpPort) {
+              existing.cdpPort = nextCdpPort();
+            }
+            fs.writeFileSync(profileFile, JSON.stringify(existing, null, 2), "utf-8");
+          }
           return { success: true, profile: existing };
         }
 

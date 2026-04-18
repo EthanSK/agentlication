@@ -80,8 +80,14 @@ export default function App() {
   const [companionModel, setCompanionModel] = useState(selectedModel);
   const [companionThinking, setCompanionThinking] = useState(thinkingLevel);
   const [companionPrefsLoaded, setCompanionPrefsLoaded] = useState(false);
+  // `null` = unresolved (still loading profile). Default to Electron only once
+  // we know for sure; renderer keys routing off this flag so we must never
+  // assume true at boot or we'll bypass the AX path.
+  // See fix for Bug 1 in AUDIT-2026-04-18.md — hardcoded isElectron:true made
+  // the native-AX companion path unreachable.
+  const [companionIsElectron, setCompanionIsElectron] = useState<boolean | null>(null);
 
-  // Load per-app preferences when companion opens
+  // Load per-app preferences + profile when companion opens
   useEffect(() => {
     if (!isCompanionMode || !companionAppName || companionPrefsLoaded) return;
     (async () => {
@@ -93,6 +99,22 @@ export default function App() {
         }
       } catch {
         // Use defaults
+      }
+      try {
+        // Real runtime detection: the profile written at agentlicate-time
+        // records whether the target is Electron (checked via app-scanner's
+        // Electron-framework probe). Route companion send to the right path
+        // based on that, instead of hardcoding true.
+        const profile = await window.agentlication?.getAppProfile(companionAppName);
+        if (profile && typeof profile.isElectron === "boolean") {
+          setCompanionIsElectron(profile.isElectron);
+        } else {
+          // No profile yet (shouldn't happen in normal flows) — assume
+          // Electron as the historical default so we don't silently fail.
+          setCompanionIsElectron(true);
+        }
+      } catch {
+        setCompanionIsElectron(true);
       }
       setCompanionPrefsLoaded(true);
     })();
@@ -114,10 +136,28 @@ export default function App() {
   };
 
   if (isCompanionMode) {
+    // Until the profile load resolves, render a lightweight loading state so
+    // ChatPanel never mounts with a stale isElectron assumption and thus
+    // never dispatches to the wrong companion send IPC.
+    if (companionIsElectron === null) {
+      return (
+        <div className="app companion-app">
+          <div className="companion-titlebar">
+            <div className="companion-titlebar-drag">
+              <span className="companion-titlebar-title">{companionAppName}</span>
+            </div>
+          </div>
+          <div className="companion-content" style={{ padding: 16, opacity: 0.6 }}>
+            Loading {companionAppName}...
+          </div>
+        </div>
+      );
+    }
+
     const companionTarget: TargetApp = {
       name: companionAppName!,
       path: "",
-      isElectron: true,
+      isElectron: companionIsElectron,
     };
 
     const handleCloseCompanion = () => {

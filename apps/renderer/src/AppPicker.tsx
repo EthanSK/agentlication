@@ -113,14 +113,26 @@ export default function AppPicker({
   const handleAgentlicate = async (app: TargetApp) => {
     setError(null);
 
-    // Step 1: Create profile if not already agentlicated
+    // Step 1: Create or migrate profile.
+    //
+    // `createAppProfile` is idempotent in the main process: it creates a
+    // new profile on first call, and on subsequent calls it returns the
+    // existing profile — migrating the stored `isElectron` in place when
+    // the caller-supplied value disagrees. We therefore call it on every
+    // agentlicate click (not only when the app isn't in `agentlicatedApps`)
+    // so previously poisoned profiles (Bug 1 fallout, AUDIT-2026-04-18.md)
+    // self-heal the next time the user clicks Reconnect.
     let profile: AppProfile | undefined;
-    if (!agentlicatedApps.has(app.name) && window.agentlication) {
-      setCreatingProfile(app.path);
+    const isNewlyAgentlicated = !agentlicatedApps.has(app.name);
+    if (window.agentlication) {
+      if (isNewlyAgentlicated) setCreatingProfile(app.path);
       try {
         const profileResult = await window.agentlication.createAppProfile({
           name: app.name,
           path: app.path,
+          // Forward the scanned Electron-vs-native classification so the
+          // profile on disk records (or is migrated to) the ground truth.
+          isElectron: app.isElectron,
         });
         if (!profileResult.success) {
           setError(profileResult.error || "Failed to create app profile");
@@ -128,12 +140,13 @@ export default function AppPicker({
           return;
         }
         profile = profileResult.profile;
-        // Mark as agentlicated
+        // Mark as agentlicated (idempotent on Set)
         setAgentlicatedApps((prev) => new Set(prev).add(app.name));
 
-        // Step 1b: Non-blocking source repo discovery and clone
-        // This runs in background while CDP connection proceeds
-        if (profile && !profile.sourceRepoUrl) {
+        // Step 1b: Non-blocking source repo discovery and clone.
+        // Only run on first agentlicate — skip if we already have a URL
+        // or this is a reconnect on an already-known app.
+        if (isNewlyAgentlicated && profile && !profile.sourceRepoUrl) {
           findAndCloneSourceRepo(app.name, profile.bundleId).catch(() => {
             // Source repo discovery is best-effort, don't block agentlication
           });

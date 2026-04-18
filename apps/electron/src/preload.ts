@@ -73,7 +73,7 @@ contextBridge.exposeInMainWorld("agentlication", {
     ipcRenderer.invoke(IPC.SCAN_APPS, options),
   launchApp: (appPath: string) => ipcRenderer.invoke(IPC.LAUNCH_APP, appPath),
   isAppAgentlicated: (appName: string) => ipcRenderer.invoke(IPC.APP_IS_AGENTLICATED, appName),
-  createAppProfile: (appData: { name: string; path: string }) =>
+  createAppProfile: (appData: { name: string; path: string; isElectron?: boolean }) =>
     ipcRenderer.invoke(IPC.APP_CREATE_PROFILE, appData),
   getAppProfile: (appName: string) => ipcRenderer.invoke(IPC.APP_GET_PROFILE, appName),
 

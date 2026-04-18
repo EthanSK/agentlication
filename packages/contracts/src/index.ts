@@ -1,3 +1,27 @@
+// ── Companion routing helpers ───────────────────────────────────
+
+/**
+ * Name of the preload-exposed IPC to invoke for a companion message.
+ * `companionAgentSend` = Electron/CDP path; `companionNativeAgentSend` =
+ * native macOS Accessibility-API path.
+ */
+export type CompanionSenderKey =
+  | "companionAgentSend"
+  | "companionNativeAgentSend";
+
+/**
+ * Pick the right companion-send IPC based on whether the target is Electron.
+ *
+ * Bug 1 (AUDIT-2026-04-18.md): the renderer previously hardcoded
+ * `isElectron: true`, which left the AX bridge + the native-companion IPC
+ * (`COMPANION_NATIVE_AGENT_SEND`) unreachable. Centralising this decision
+ * here keeps it unit-testable from either workspace and prevents the two
+ * call sites from drifting back to a hardcoded branch.
+ */
+export function pickCompanionSender(isElectron: boolean): CompanionSenderKey {
+  return isElectron ? "companionAgentSend" : "companionNativeAgentSend";
+}
+
 // ── Provider types ──────────────────────────────────────────────
 
 export type ProviderKind = "claude" | "codex";

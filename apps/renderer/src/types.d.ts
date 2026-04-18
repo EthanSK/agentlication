@@ -22,7 +22,7 @@ interface AgentlicationAPI {
   scanApps: (options?: { includeHiddenApps?: boolean }) => Promise<TargetApp[]>;
   launchApp: (appPath: string) => Promise<{ success: boolean; port: number; error?: string }>;
   isAppAgentlicated: (appName: string) => Promise<boolean>;
-  createAppProfile: (appData: { name: string; path: string }) => Promise<{ success: boolean; profile?: AppProfile; error?: string }>;
+  createAppProfile: (appData: { name: string; path: string; isElectron?: boolean }) => Promise<{ success: boolean; profile?: AppProfile; error?: string }>;
   getAppProfile: (appName: string) => Promise<AppProfile | null>;
   cdpConnect: (appPath: string, cdpPort: number) => Promise<{ success: boolean; error?: string }>;
   cdpDisconnect: () => Promise<{ success: boolean }>;

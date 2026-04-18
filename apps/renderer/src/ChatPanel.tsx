@@ -9,6 +9,7 @@ import type {
   StatusIcon,
 } from "@agentlication/contracts";
 import ChatComposer from "./ChatComposer";
+import { pickCompanionSender } from "@agentlication/contracts";
 
 const SETUP_AGENT_SYSTEM_PROMPT = `You are the Agentlication Setup Agent — a friendly, knowledgeable assistant that helps users set up and configure their Electron applications for use with Agentlication.
 
@@ -191,12 +192,22 @@ export default function ChatPanel({
 
     if (window.agentlication) {
       if (targetApp) {
-        // Companion chat — uses HARNESS.md + DOM context
-        await window.agentlication.companionAgentSend({
+        // Companion chat — route to the Electron (CDP) path or the native
+        // macOS Accessibility-API path based on the target app's actual
+        // kind. Bug 1 in AUDIT-2026-04-18.md: previously hardcoded to
+        // always call companionAgentSend, which left the AX bridge as
+        // dead code for non-Electron apps.
+        const payload = {
           appName: targetApp.name,
           message: text,
           modelId: selectedModel,
-        });
+        };
+        const senderKey = pickCompanionSender(targetApp.isElectron);
+        if (senderKey === "companionAgentSend") {
+          await window.agentlication.companionAgentSend(payload);
+        } else {
+          await window.agentlication.companionNativeAgentSend(payload);
+        }
       } else {
         // Hub / Setup Agent chat — uses dedicated system prompt
         await window.agentlication.agentSendHub(

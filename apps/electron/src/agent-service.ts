@@ -298,6 +298,31 @@ class ClaudeProvider implements Provider {
   }
 }
 
+/**
+ * Compose the single-positional-prompt blob passed to `codex exec`.
+ *
+ * The Codex CLI has no `--system` / `--system-prompt` flag (verified on
+ * 2026-04-18 with `codex exec --help` against the version currently shipped
+ * on this machine). The only way to get system-level instructions into the
+ * model turn is to fold them into the single positional prompt argument.
+ *
+ * We delimit the two blocks so the model can still tell them apart, mirroring
+ * Claude's `--system-prompt` semantics as closely as possible.
+ *
+ * Exported for unit tests — see test/agent-service.test.js.
+ */
+export function buildCodexPrompt(systemPrompt: string, userMessage: string): string {
+  const trimmed = (systemPrompt ?? "").trim();
+  if (!trimmed) return userMessage;
+  return (
+    `# System Instructions\n\n` +
+    `${trimmed}\n\n` +
+    `---\n\n` +
+    `# User Message\n\n` +
+    `${userMessage}`
+  );
+}
+
 class CodexProvider implements Provider {
   private process: ChildProcess | null = null;
   private resolvedPath: string | null = null;
@@ -314,7 +339,7 @@ class CodexProvider implements Provider {
 
   async send(
     message: string,
-    _systemPrompt: string,
+    systemPrompt: string,
     modelId: string,
     onEvent: (event: AgentEvent) => void
   ): Promise<void> {
@@ -341,6 +366,17 @@ class CodexProvider implements Provider {
       PATH: `${process.env.PATH || ""}:${path.join(os.homedir(), ".local", "bin")}:/usr/local/bin:/opt/homebrew/bin`,
     };
 
+    // Bug 2 fix (AUDIT-2026-04-18.md): `codex exec` has no --system-prompt
+    // flag (verified 2026-04-18 via `codex exec --help`). The CLI takes a
+    // single positional prompt, so we fold the system instructions into a
+    // clearly delimited header and send the whole blob as the prompt.
+    //
+    // The combined prompt can be large (interactive elements + a11y tree +
+    // HARNESS.md), so we pass it via stdin (using `-` as the prompt arg,
+    // which `codex exec --help` documents as "instructions are read from
+    // stdin") rather than as argv, to avoid ARG_MAX surprises on big apps.
+    const composedPrompt = buildCodexPrompt(systemPrompt, message);
+
     return new Promise((resolve, reject) => {
       this.process = spawn(
         this.resolvedPath!,
@@ -351,10 +387,17 @@ class CodexProvider implements Provider {
           "--dangerously-bypass-approvals-and-sandbox",
           "--skip-git-repo-check",
           "--json",
-          message,
+          "-", // read prompt from stdin
         ],
-        { env: augmentedEnv }
+        { env: augmentedEnv, stdio: ["pipe", "pipe", "pipe"] }
       );
+
+      // Write the composed prompt to stdin and close it so codex knows the
+      // prompt is complete.
+      if (this.process.stdin) {
+        this.process.stdin.write(composedPrompt);
+        this.process.stdin.end();
+      }
 
       let buffer = "";
       let doneSent = false;
