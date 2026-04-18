@@ -986,6 +986,20 @@ app.whenReady().then(() => {
 
 app.on("window-all-closed", () => {
   closeCompanionWindow();
+  // Kill any in-flight claude/codex child process so it doesn't outlive
+  // the app as an orphaned subprocess (it was holding stdio pipes to a
+  // renderer that no longer exists).
+  try { agentService.cancel(); } catch { /* best-effort */ }
   cdpService.disconnect();
   if (process.platform !== "darwin") app.quit();
+});
+
+// On macOS the app stays alive after window-all-closed, but if the user
+// hits Cmd+Q or the app is terminated, we still need to reap spawned
+// provider CLIs. Without this the claude/codex child process survives
+// until it exits on its own, leaving a visible zombie in Activity Monitor
+// and a pipe that Electron has already closed.
+app.on("before-quit", () => {
+  try { agentService.cancel(); } catch { /* best-effort */ }
+  try { cdpService.disconnect(); } catch { /* best-effort */ }
 });

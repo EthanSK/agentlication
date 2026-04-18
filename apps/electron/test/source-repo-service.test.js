@@ -6,6 +6,8 @@ const {
   scoreConfidence,
   rankRepoCandidates,
   selectRepoFromCandidates,
+  isSafeGitRepoUrl,
+  isSafeGitRef,
 } = require("../dist/source-repo-service.js");
 
 function repo(fullName, description, stars) {
@@ -115,3 +117,84 @@ for (const scenario of scenarios) {
     assert.notEqual(ranked[0]?.confidence, "high");
   });
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// Security: isSafeGitRepoUrl / isSafeGitRef
+//
+// Before the fix, `cloneSourceRepo` passed a renderer-supplied `repoUrl`
+// straight to `git clone --depth 1 <url> <dest>`. Because git accepts
+// `--upload-pack=...` / `--config=...` as flags, a URL like
+// `--upload-pack=/tmp/pwn.sh` would cause `git clone` to execute an
+// arbitrary command under the Electron main process (CVE-2017-1000117
+// class). These tests lock in the validator so a regression immediately
+// fails CI instead of shipping a main-process RCE.
+// ─────────────────────────────────────────────────────────────────────
+
+test("isSafeGitRepoUrl: accepts standard GitHub HTTPS URLs", () => {
+  assert.equal(isSafeGitRepoUrl("https://github.com/EthanSK/producer-player"), true);
+  assert.equal(isSafeGitRepoUrl("https://github.com/EthanSK/producer-player.git"), true);
+  assert.equal(isSafeGitRepoUrl("http://example.com/repo.git"), true);
+});
+
+test("isSafeGitRepoUrl: accepts git:// and ssh:// URLs", () => {
+  assert.equal(isSafeGitRepoUrl("git://github.com/foo/bar.git"), true);
+  assert.equal(isSafeGitRepoUrl("ssh://git@github.com/foo/bar.git"), true);
+  assert.equal(isSafeGitRepoUrl("git+ssh://git@github.com/foo/bar.git"), true);
+});
+
+test("isSafeGitRepoUrl: accepts SCP-style git@host:owner/repo", () => {
+  assert.equal(isSafeGitRepoUrl("git@github.com:EthanSK/agentlication.git"), true);
+  assert.equal(isSafeGitRepoUrl("git@gitlab.com:group/subgroup/repo"), true);
+});
+
+test("isSafeGitRepoUrl: rejects flag-like URLs (the actual bug)", () => {
+  // These were exploitable before the fix. If this test ever regresses,
+  // an attacker-controlled repoUrl becomes arbitrary command execution.
+  assert.equal(isSafeGitRepoUrl("--upload-pack=/tmp/pwn.sh"), false);
+  assert.equal(isSafeGitRepoUrl("--config=core.sshCommand=touch /tmp/pwn"), false);
+  assert.equal(isSafeGitRepoUrl("-u"), false);
+  assert.equal(isSafeGitRepoUrl("-"), false);
+  // Leading whitespace still resolves to a `-`-prefixed trimmed value
+  assert.equal(isSafeGitRepoUrl("   --upload-pack=x"), false);
+});
+
+test("isSafeGitRepoUrl: rejects whitespace/control-char smuggling", () => {
+  assert.equal(isSafeGitRepoUrl("https://github.com/foo bar"), false);
+  assert.equal(isSafeGitRepoUrl("https://github.com/foo\nbar"), false);
+  assert.equal(isSafeGitRepoUrl("https://github.com/foo\x00bar"), false);
+});
+
+test("isSafeGitRepoUrl: rejects non-strings and empty values", () => {
+  assert.equal(isSafeGitRepoUrl(""), false);
+  assert.equal(isSafeGitRepoUrl("   "), false);
+  assert.equal(isSafeGitRepoUrl(null), false);
+  assert.equal(isSafeGitRepoUrl(undefined), false);
+  assert.equal(isSafeGitRepoUrl(42), false);
+  assert.equal(isSafeGitRepoUrl({}), false);
+});
+
+test("isSafeGitRepoUrl: rejects schemes we don't expect", () => {
+  // file:// and javascript: are pathological — refuse them even though
+  // they don't start with `-`.
+  assert.equal(isSafeGitRepoUrl("file:///etc/passwd"), false);
+  assert.equal(isSafeGitRepoUrl("javascript:alert(1)"), false);
+  assert.equal(isSafeGitRepoUrl("ftp://example.com/repo"), false);
+});
+
+test("isSafeGitRef: accepts typical version tags", () => {
+  assert.equal(isSafeGitRef("v1.2.3"), true);
+  assert.equal(isSafeGitRef("1.2.3"), true);
+  assert.equal(isSafeGitRef("release/2.0"), true);
+  assert.equal(isSafeGitRef("refs/tags/v1"), true);
+});
+
+test("isSafeGitRef: rejects flag-like or whitespace-bearing refs", () => {
+  // A malicious cloned repo could ship a tag named `--upload-pack=...`
+  // that then flows into `git fetch ... tag <ref>`. Filter it.
+  assert.equal(isSafeGitRef("--upload-pack=/tmp/pwn.sh"), false);
+  assert.equal(isSafeGitRef("-v1"), false);
+  assert.equal(isSafeGitRef("v 1.0"), false);
+  assert.equal(isSafeGitRef("v1;ls"), false);
+  assert.equal(isSafeGitRef(""), false);
+  assert.equal(isSafeGitRef(null), false);
+});

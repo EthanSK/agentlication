@@ -158,6 +158,55 @@ export async function findSourceRepo(
 }
 
 /**
+ * Validate that a repository URL is safe to pass to `git clone`.
+ *
+ * Security: `git clone <url> <dest>` using `execFile` avoids shell injection,
+ * but git itself still interprets URL arguments that start with `-` as CLI
+ * flags. A renderer-supplied URL like `--upload-pack=/tmp/pwn.sh` or
+ * `--config=core.sshCommand=...` becomes arbitrary command execution during
+ * clone (CVE-2017-1000117 class). We only accept well-formed
+ * https:// / http:// / git:// / ssh:// / git@host: URLs and reject
+ * anything starting with `-`. Tags/refs parsed from the cloned repo flow
+ * through a similar check before being passed to `git fetch` / `git checkout`.
+ *
+ * Exported for unit tests — see test/source-repo-service.test.js.
+ */
+export function isSafeGitRepoUrl(url: unknown): url is string {
+  if (typeof url !== "string") return false;
+  const trimmed = url.trim();
+  if (!trimmed) return false;
+  // Never accept anything that looks like a CLI flag.
+  if (trimmed.startsWith("-")) return false;
+  // Disallow whitespace and control characters — git accepts them in URLs
+  // but they're a red flag for argument smuggling.
+  if (/[\s\x00-\x1f]/.test(trimmed)) return false;
+  // Accept the standard URL schemes we expect from GitHub results.
+  if (/^https?:\/\//i.test(trimmed)) return true;
+  if (/^git(\+ssh)?:\/\//i.test(trimmed)) return true;
+  if (/^ssh:\/\//i.test(trimmed)) return true;
+  // SCP-style `git@host:owner/repo(.git)?`
+  if (/^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+:[A-Za-z0-9._\/-]+$/.test(trimmed)) return true;
+  return false;
+}
+
+/**
+ * Validate that a git ref (tag/branch) is safe to pass unescaped to `git`.
+ * Rejects anything that could be mistaken for a CLI flag or inject extra
+ * args. We still pass refs after `--` where possible; this is belt-and-
+ * braces for refs read back from the cloned repo's `git tag -l` output.
+ */
+export function isSafeGitRef(ref: unknown): ref is string {
+  if (typeof ref !== "string") return false;
+  const trimmed = ref.trim();
+  if (!trimmed) return false;
+  if (trimmed.startsWith("-")) return false;
+  // Git refs are fairly permissive but shouldn't have whitespace, shell
+  // metacharacters, or NULs. This matches the character class that
+  // `git check-ref-format` would accept plus common tag chars (`.`, `+`).
+  return /^[A-Za-z0-9._+\/-]+$/.test(trimmed);
+}
+
+/**
  * Clone a source repo into the app's profile source/ directory.
  * Uses --depth 1 for speed. Tries to checkout the matching version tag.
  */
@@ -166,6 +215,16 @@ export async function cloneSourceRepo(
   repoUrl: string,
   profileRoot: string
 ): Promise<SourceCloneResult> {
+  // Reject hostile URLs BEFORE touching the filesystem. Without this a
+  // renderer-crafted URL like `--upload-pack=...` would execute an
+  // attacker-chosen command under the Electron main process.
+  if (!isSafeGitRepoUrl(repoUrl)) {
+    return {
+      success: false,
+      error: `Refusing to clone: repoUrl is not a safe git URL (${String(repoUrl).slice(0, 80)})`,
+    };
+  }
+
   const sourceDir = path.join(profileRoot, profile.slug, "source");
 
   try {
@@ -181,10 +240,12 @@ export async function cloneSourceRepo(
       fs.mkdirSync(sourceDir, { recursive: true });
     }
 
-    // Clone with --depth 1 for speed, using execFile with git directly
+    // Clone with --depth 1 for speed, using execFile with git directly.
+    // `--` terminates option parsing so the URL can never be re-interpreted
+    // as a flag even if isSafeGitRepoUrl somehow misses a case.
     await execFilePromise(
       "git",
-      ["clone", "--depth", "1", repoUrl, sourceDir],
+      ["clone", "--depth", "1", "--", repoUrl, sourceDir],
       { timeout: 120000 } // 2 min timeout for clone
     );
 
@@ -215,15 +276,22 @@ export async function cloneSourceRepo(
           // Try exact matches: v1.2.3, 1.2.3
           const matchingTag = tags.find((t) => t === `v${version}` || t === version);
 
-          if (matchingTag) {
-            // Fetch the specific tag
+          if (matchingTag && isSafeGitRef(matchingTag)) {
+            // Fetch the specific tag — refs read from a third-party repo
+            // could still contain `-`-prefixed names that git would
+            // interpret as flags; isSafeGitRef above filters those.
             await execFilePromise(
               "git",
               ["fetch", "--depth", "1", "origin", "tag", matchingTag],
               { cwd: sourceDir, timeout: 30000 }
             );
 
-            await execFilePromise("git", ["checkout", matchingTag], {
+            // `--detach` makes the argument a ref (not a pathspec) so
+            // `git checkout -- <tag>` doesn't silently degrade to pathspec
+            // mode and leave us on the default branch. `matchingTag`
+            // already passed isSafeGitRef, so it cannot be a `-`-prefixed
+            // flag — no additional `--` separator needed here.
+            await execFilePromise("git", ["checkout", "--detach", matchingTag], {
               cwd: sourceDir,
               timeout: 10000,
             });
