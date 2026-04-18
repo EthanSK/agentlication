@@ -437,3 +437,37 @@ Also added `console.time` / `console.log` instrumentation in the main process so
 - `/tmp/agentlication-loaded.png` (loaded state post-fix)
 
 22/22 existing tests still pass (`npm test` in `apps/electron`).
+
+---
+
+## 2026-04-18 — Bug-bash: repo URL arg-injection + CLI zombie reap
+
+Parallel bug-bash subagent, running concurrently with the hub-lag subagent. Systematic static-audit of `packages/contracts`, `apps/electron/src/**`, and the React renderer looking for real bugs (not speculative defensive code).
+
+### Bugs fixed (commit `ed5c08a`)
+
+1. **Security: git clone argument injection via `repoUrl`** — `apps/electron/src/source-repo-service.ts`. The renderer-facing `APP_CLONE_SOURCE` IPC handler passed the renderer's `repoUrl` straight to `git clone --depth 1 <repoUrl> <dest>` via `execFile`. `execFile` avoids shell injection but git itself interprets URL arguments starting with `-` as CLI flags. A crafted URL like `--upload-pack=/tmp/pwn.sh` became arbitrary command execution in the Electron main process (CVE-2017-1000117 class). Fix: new `isSafeGitRepoUrl` validator that accepts http/https/git/ssh/scp-style URLs and rejects `-`-prefixed or whitespace-bearing strings, plus a `--` separator on the git invocation for defense in depth. Companion `isSafeGitRef` validator filters refs read back from the cloned repo's `git tag -l` output before they flow into `git fetch` / `git checkout`.
+
+2. **Version tag checkout was silently broken** — same file. Original code used `git checkout <tag>` with no separator; my first-pass fix added `--` which caused Codex review to flag a real regression: `git checkout -- <tag>` enters *pathspec* mode (not ref mode) and leaves HEAD on the default branch. The surrounding `catch {}` swallowed the failure, so version pinning silently no-op'd on any successful path. Fixed to `git checkout --detach <tag>`.
+
+3. **Zombie claude/codex CLI children on app quit** — `apps/electron/src/main.ts`. `window-all-closed` disconnected CDP but never cancelled in-flight provider subprocesses. Hitting Cmd+Q while the agent was streaming left `claude` / `codex` running as orphans with dead stdio pipes. Added `agentService.cancel()` to both `window-all-closed` and a new `before-quit` handler.
+
+### Test coverage
+
+Baseline: 13 tests passing.
+After: 22 tests passing (+9 new for `isSafeGitRepoUrl` / `isSafeGitRef`).
+New tests lock in the validator behaviour so a regression becomes a CI failure rather than a shipped RCE.
+
+### Codex review
+
+1 iteration. First pass caught the `git checkout -- <tag>` pathspec bug. Second pass returned `overall_correctness: "patch is correct", overall_confidence_score: 0.92`.
+
+### Lower-priority findings parked in IDEAS.md
+
+- Codex also flagged a regression in the hub-lag subagent's unstaged `app-scanner.ts` change (forces `isElectron: true` for dev-build apps, bypassing `checkIfElectron`) — flagged to them, not mine to commit.
+- Dual-window agent-event leak (hub vs companion both subscribe to the same broadcast).
+- Over-broad stderr "error" substring matching in `agent-service.ts` produces false-positive error bubbles.
+- Swift string interpolation in `getTargetAppBounds` doesn't escape backslashes.
+- `pgrep -f <appName>` lacks regex-meta escaping.
+- Missing tests for `patchService`, `cdpService`, `accessibility-service`, and the preload → main IPC chain.
+- See IDEAS.md § "Bug-bash 2026-04-18 — parked findings" for the full list and recommended cadence.
