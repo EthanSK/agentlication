@@ -247,6 +247,22 @@
 - Investigation needed: how plugin subwindows expose themselves via CGWindow / accessibility API; whether each plugin instance gets a unique window id or they share one per host; VST3 vs AU vs VST2 differences
 - Could start with a single DAW (Ableton Live) + a single plugin format (VST3) as proof-of-concept, then generalize
 
+## Cold-Start App Scan Hang (bug-fix idea)
+
+- On first launch the hub can stall on "Scanning for apps..." even though the main process finishes extracting icons (129 files in `/tmp/agentlication-icons/`) and no `sips`/`defaults` child processes remain. Cmd+R reliably recovers.
+- Repro condition appears correlated with `/Applications` size — 131 bundles on the MBP triggers it; the Mini with fewer apps didn't exhibit it in the bootstrap run.
+- Likely causes to investigate:
+  1. `scanElectronApps` uses `execFileSync` for `defaults read` × 2 + `sips` per app → up to ~400 synchronous subprocess calls. Main event loop is pinned for the full duration, and the IPC reply may arrive after some renderer-side timeout / effect cleanup.
+  2. `setApps(scanned)` then `Promise.all(...isAppAgentlicated)` runs AFTER — a rejected `isAppAgentlicated` could potentially leave `setLoading(false)` unreached if the exception is thrown between `setApps` and the `Promise.all`. (Actually `finally` should catch this — so more likely #1.)
+- Suggested fix: move `extractAppIcon` to a worker thread or make it async with a bounded concurrency (e.g. `p-limit(8)`). Stream results back to the renderer as they're ready so the UI can populate incrementally instead of blocking on the full set.
+- Secondary idea: cache scan results to disk (`~/.agentlication/app-scan-cache.json`) keyed by `/Applications` mtime so warm launches skip the scan entirely. Refresh in the background.
+
+## Detachable Companion Window Architecture
+
+- Observed during manual testing: the Setup Agent panel can pop out into its own smaller window (~400x600) while the main hub stays open at 1100x750. Both titled "Agentlication" but logically separate.
+- Worth documenting the lifecycle: when does a pop-out happen, how is state shared, does closing the pop-out kill the companion session or just detach the view?
+- User-facing idea: make pop-out explicit via a "Detach companion" button so the user can park agent panels as floating mini-windows alongside the target app (fits the "agent panel overlaying the target app" vision better than a side pane).
+
 ## Open Questions
 
 - Local installer vs cloud build queue?

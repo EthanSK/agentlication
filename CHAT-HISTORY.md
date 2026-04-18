@@ -376,3 +376,27 @@ Captured two new product ideas from Ethan's voice note:
 - **VST plugin targets**: support VST/VST3/AU plugins hosted inside DAWs as Agentlication targets. Plugin UIs are subwindows of the DAW process, so a per-process window walker + the click-to-capture flow above would naturally target them. Opens a direct integration path to mixassist-ai. Start with Ableton + VST3 as PoC.
 
 Both ideas appended to IDEAS.md under their own H2 sections.
+
+## 2026-04-18 — MBP + Mini Full Manual Verification Pass (HEAD 8ab2577)
+
+Ran a comprehensive manual walkthrough of the Agentlication UI on the MacBook Pro and had the Mac Mini agent do the same in parallel via agent-bridge. Both machines on commit `8ab2577`.
+
+**MBP walkthrough (all steps pass):**
+- **Step 1 — Window found:** Swift CGWindowListCopyWindowInfo returned WINDOW_ID=25472 (Electron, 1100x750). Hub rendered with "Agentlication / Select an app to agentlicate", search bar, All Apps toggle, path input + Agentlicate button, right pane "Setup Agent" with model picker (Claude Opus 4.6 / High thinking). `/tmp/agentlication-step-1.png`.
+- **Step 2 — App picker:** After initial hub load, the left pane showed "Scanning for apps..." for 60+ seconds while icons were extracted. Icon cache `/tmp/agentlication-icons/` filled to 129 files but the UI never left the loading state until Cmd+R reload. After reload the list rendered: **34 Electron apps** + **97 Other Apps** (badged "Native", "Limited support — Accessibility API only"). Search filters correctly (tested "Chrome" → Chrome NoMediaKeys + Google Chrome; "Safari" → Safari). `/tmp/agentlication-step-2.png`.
+- **Step 3 — Setup Agent flow:** Clicked Agentlicate on Google Chrome. View transitioned to "Agentlication — Google Chrome" with back arrow, status banner "Searching GitHub for Google Chrome source repo...", empty conversation, input "Ask the agent...". Source repo search returned "Top match is none confidence. Please choose a repository manually from the candidate list." — expected fallback. `/tmp/agentlication-step-3.png`.
+- **Step 4 — App switching:** Navigated back to hub, searched Safari, clicked Agentlicate. Title changed to "Agentlication — Safari", new source-repo search kicked off for Safari. Panel reconfigured correctly for the new target. `/tmp/agentlication-step-4.png`.
+- **Step 5 — Chat round-trip:** Typed "Hello, can you respond with just OK?" into the Setup Agent input on the hub (right pane), clicked send. Claude CLI responded with two "oK" assistant messages. End-to-end agent round-trip confirmed working. `/tmp/agentlication-step-5.png`.
+- **Step 6 — Final state:** Same as step 5 — hub with Electron app list + completed Setup Agent conversation. `/tmp/agentlication-step-6.png`.
+
+**Bug / regression noted (Step 2):** On first launch the hub gets stuck on "Scanning for apps..." even after all 129 icon files are written to `/tmp/agentlication-icons/` and no `sips`/`defaults` subprocesses remain. A window reload (Cmd+R) reliably makes the app list appear (icon cache is reused so the second scan is nearly instant). Likely a race in the initial IPC response or a swallowed rejection in `loadApps()` during cold start. Second and subsequent mounts work correctly. Repro: fresh launch on a machine with many `/Applications` entries (131 on this MBP). Not blocking, but worth a deeper look — could be `extractAppIcon`'s synchronous `execFileSync` chain blocking the main process long enough that something timeouts on the renderer side.
+
+**CLI detection:** electron logs show `[AgentService] Claude CLI detected: 2.1.114 (Claude Code)` + `[AgentService] Codex CLI detected`. Both providers available.
+
+**Model picker display:** top-right reads "Claude Opus 4.6" (not 4.7) — expected since that's the highest-tier public Claude Code model at the time of this HEAD.
+
+**Companion window popout:** observed during navigation — the Setup Agent side panel can detach into a smaller 400x600 window (titled "Agentlication", content shows the per-app agent). Not tested deeply today but confirms the multi-window companion architecture is functional.
+
+**Mac Mini bootstrap (via agent-bridge):** asked the Mini Claude agent to pull, install, and launch its own copy. Mini replied within ~5 min: fast-forwarded `20cbc4b..8ab2577`, `npm install` "up to date in 300ms", dev server started (PID 26610, Vite on :5173, both CLIs detected), Electron hub screencapture verified. Mini hub shows **6 Electron apps** (vs 34 on MBP — different installed software), with Producer Player and VS Code pre-agentlicated (badge + Reconnect button). No regressions reported from Mini side.
+
+**Files screenshots:** `/tmp/agentlication-step-{1..6}.png` on MBP, `/tmp/agentlication-mini-hub.png` on Mini.
