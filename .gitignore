@@ -1,3 +1,5 @@
+# Generated build artifacts stay outside Spotlight.
+*.noindex/
 # Dependencies
 node_modules/
 .pnp

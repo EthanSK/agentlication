@@ -31,7 +31,7 @@
       "!node_modules"
     ],
     "directories": {
-      "output": "../../out"
+      "output": "../../out.noindex"
     },
     "extraResources": [
       {

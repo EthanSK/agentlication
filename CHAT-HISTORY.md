@@ -471,3 +471,7 @@ New tests lock in the validator behaviour so a regression becomes a CI failure r
 - `pgrep -f <appName>` lacks regex-meta escaping.
 - Missing tests for `patchService`, `cdpService`, `accessibility-service`, and the preload → main IPC chain.
 - See IDEAS.md § "Bug-bash 2026-04-18 — parked findings" for the full list and recommended cadence.
+
+## 2026-10-17 — Build artifact indexing
+
+Keep generated Electron packages out of Spotlight by writing them to out.noindex; application source, resources and installed apps stay in their existing locations.
